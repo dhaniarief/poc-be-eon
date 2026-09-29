@@ -1,0 +1,2547 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>EON AI Playground</title>
+
+    <style>
+      :root {
+        --bg-main: #f4f7fb;
+        --bg-soft: #f8fafc;
+        --bg-card: #ffffff;
+
+        --text-main: #0f172a;
+        --text-body: #334155;
+        --text-muted: #64748b;
+
+        --border: #e2e8f0;
+        --border-dark: #cbd5e1;
+
+        --local: #111827;
+        --cloud: #2563eb;
+        --compare: #059669;
+
+        --success-bg: #dcfce7;
+        --success-text: #166534;
+
+        --warning-bg: #fef3c7;
+        --warning-text: #92400e;
+
+        --danger-bg: #fee2e2;
+        --danger-text: #991b1b;
+
+        --blue-bg: #eff6ff;
+        --blue-text: #1d4ed8;
+
+        --purple-bg: #f3e8ff;
+        --purple-text: #7e22ce;
+
+        --cyan-bg: #ecfeff;
+        --cyan-text: #0e7490;
+
+        --shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+
+        min-height: 100vh;
+
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(37, 99, 235, 0.07),
+            transparent 32%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(5, 150, 105, 0.06),
+            transparent 28%
+          ),
+          linear-gradient(180deg, #f8fafc 0%, var(--bg-main) 100%);
+
+        color: var(--text-body);
+
+        font-family: Inter, "Segoe UI", Arial, Helvetica, sans-serif;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      .page {
+        max-width: 1700px;
+
+        margin: 0 auto;
+
+        padding: 28px 28px 60px;
+      }
+
+      /* =========================
+         PAGE HEADER
+      ========================= */
+
+      .page-header {
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: flex-start;
+
+        gap: 24px;
+
+        margin-bottom: 24px;
+      }
+
+      .title-area h1 {
+        margin: 0 0 6px;
+
+        color: var(--text-main);
+
+        font-size: 30px;
+
+        line-height: 1.2;
+
+        letter-spacing: -0.03em;
+      }
+
+      .title-area p {
+        margin: 0;
+
+        color: var(--text-muted);
+
+        font-size: 14px;
+
+        line-height: 1.6;
+      }
+
+      .environment-badge {
+        display: inline-flex;
+
+        align-items: center;
+
+        gap: 8px;
+
+        padding: 8px 12px;
+
+        border: 1px solid var(--border);
+
+        border-radius: 999px;
+
+        background: rgba(255, 255, 255, 0.8);
+
+        color: var(--text-muted);
+
+        font-size: 12px;
+
+        font-weight: 700;
+
+        white-space: nowrap;
+      }
+
+      .environment-dot {
+        width: 8px;
+        height: 8px;
+
+        border-radius: 50%;
+
+        background: #22c55e;
+
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+      }
+
+      /* =========================
+         GENERAL CARD
+      ========================= */
+
+      .panel,
+      .result-card {
+        background: rgba(255, 255, 255, 0.94);
+
+        border: 1px solid var(--border);
+
+        border-radius: 18px;
+
+        box-shadow: var(--shadow);
+      }
+
+      .panel {
+        padding: 22px;
+
+        margin-bottom: 20px;
+      }
+
+      /* =========================
+         INPUT AREA
+      ========================= */
+
+      .form-grid {
+        display: grid;
+
+        grid-template-columns:
+          minmax(260px, 0.7fr)
+          minmax(0, 1.3fr);
+
+        gap: 18px;
+      }
+
+      .field {
+        margin-bottom: 18px;
+      }
+
+      .field:last-child {
+        margin-bottom: 0;
+      }
+
+      label {
+        display: flex;
+
+        align-items: center;
+
+        gap: 6px;
+
+        margin-bottom: 8px;
+
+        color: var(--text-main);
+
+        font-size: 13px;
+
+        font-weight: 750;
+      }
+
+      .label-hint {
+        color: var(--text-muted);
+
+        font-size: 11px;
+
+        font-weight: 500;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+
+        border: 1px solid var(--border-dark);
+
+        border-radius: 12px;
+
+        padding: 12px 14px;
+
+        background: #ffffff;
+
+        color: var(--text-main);
+
+        font-size: 14px;
+
+        line-height: 1.5;
+
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #94a3b8;
+      }
+
+      input:focus,
+      textarea:focus {
+        outline: none;
+
+        border-color: #3b82f6;
+
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+      }
+
+      textarea {
+        min-height: 145px;
+
+        resize: vertical;
+      }
+
+      .helper {
+        margin-top: 7px;
+
+        color: var(--text-muted);
+
+        font-size: 11px;
+
+        line-height: 1.5;
+      }
+
+      /* =========================
+         PROMPT PRESETS
+      ========================= */
+
+      .preset-area {
+        margin-bottom: 16px;
+      }
+
+      .preset-label {
+        margin-bottom: 9px;
+
+        color: var(--text-muted);
+
+        font-size: 12px;
+
+        font-weight: 700;
+
+        text-transform: uppercase;
+
+        letter-spacing: 0.04em;
+      }
+
+      .preset-list {
+        display: flex;
+
+        flex-wrap: wrap;
+
+        gap: 8px;
+      }
+
+      .preset-button {
+        display: inline-flex;
+
+        align-items: center;
+
+        gap: 7px;
+
+        padding: 8px 12px;
+
+        border: 1px solid var(--border);
+
+        border-radius: 999px;
+
+        background: #ffffff;
+
+        color: var(--text-body);
+
+        font-size: 12px;
+
+        font-weight: 700;
+
+        cursor: pointer;
+
+        transition: all 0.18s ease;
+      }
+
+      .preset-button:hover {
+        border-color: #93c5fd;
+
+        background: #eff6ff;
+
+        color: #1d4ed8;
+
+        transform: translateY(-1px);
+      }
+
+      .preset-button.active {
+        border-color: #60a5fa;
+
+        background: #eff6ff;
+
+        color: #1d4ed8;
+      }
+
+      .preset-icon {
+        width: 8px;
+        height: 8px;
+
+        border-radius: 50%;
+
+        background: currentColor;
+
+        opacity: 0.7;
+      }
+
+      /* =========================
+         ADVANCED
+      ========================= */
+
+      .advanced {
+        margin-top: 14px;
+
+        border-top: 1px solid var(--border);
+
+        padding-top: 14px;
+      }
+
+      .advanced summary {
+        cursor: pointer;
+
+        color: var(--text-muted);
+
+        font-size: 12px;
+
+        font-weight: 700;
+
+        user-select: none;
+      }
+
+      .advanced-body {
+        margin-top: 14px;
+      }
+
+      /* =========================
+         ACTION BUTTONS
+      ========================= */
+
+      .actions {
+        display: flex;
+
+        flex-wrap: wrap;
+
+        gap: 10px;
+
+        margin-top: 18px;
+      }
+
+      .action-button {
+        display: inline-flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        gap: 8px;
+
+        min-width: 120px;
+
+        padding: 11px 17px;
+
+        border: 0;
+
+        border-radius: 11px;
+
+        color: #ffffff;
+
+        font-size: 13px;
+
+        font-weight: 750;
+
+        cursor: pointer;
+
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease,
+          opacity 0.15s ease;
+      }
+
+      .action-button:hover:not(:disabled) {
+        transform: translateY(-1px);
+
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.15);
+      }
+
+      .action-button:disabled {
+        opacity: 0.55;
+
+        cursor: wait;
+      }
+
+      #run-local {
+        background: var(--local);
+      }
+
+      #run-cloud {
+        background: var(--cloud);
+      }
+
+      #run-compare {
+        background: var(--compare);
+      }
+
+      #new-conversation {
+        border: 1px solid var(--border);
+        background: #ffffff;
+        color: var(--text-main);
+      }
+
+      /* =========================
+         COMPARISON PANEL
+      ========================= */
+
+      .comparison-panel {
+        display: none;
+
+        margin-bottom: 20px;
+
+        overflow: hidden;
+      }
+
+      .comparison-panel.visible {
+        display: block;
+      }
+
+      .comparison-header {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 16px;
+
+        margin-bottom: 14px;
+      }
+
+      .comparison-title {
+        color: var(--text-main);
+
+        font-size: 16px;
+
+        font-weight: 800;
+      }
+
+      .comparison-subtitle {
+        margin-top: 3px;
+
+        color: var(--text-muted);
+
+        font-size: 12px;
+      }
+
+      .comparison-grid {
+        display: grid;
+
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+
+        gap: 12px;
+      }
+
+      .compare-box {
+        position: relative;
+
+        overflow: hidden;
+
+        min-height: 110px;
+
+        padding: 15px;
+
+        border: 1px solid var(--border);
+
+        border-radius: 14px;
+
+        background: var(--bg-soft);
+      }
+
+      .compare-box::after {
+        position: absolute;
+
+        top: 0;
+        left: 0;
+
+        width: 3px;
+        height: 100%;
+
+        content: "";
+
+        background: #cbd5e1;
+      }
+
+      .compare-box.web::after {
+        background: #0ea5e9;
+      }
+
+      .compare-box.speed::after {
+        background: #8b5cf6;
+      }
+
+      .compare-box.tools::after {
+        background: #f59e0b;
+      }
+
+      .compare-box.sources::after {
+        background: #10b981;
+      }
+
+      .compare-box-title {
+        margin-bottom: 9px;
+
+        color: var(--text-muted);
+
+        font-size: 11px;
+
+        font-weight: 800;
+
+        text-transform: uppercase;
+
+        letter-spacing: 0.05em;
+      }
+
+      .compare-value {
+        color: var(--text-main);
+
+        font-size: 13px;
+
+        font-weight: 700;
+
+        line-height: 1.6;
+      }
+
+      .compare-row {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 12px;
+      }
+
+      .compare-row + .compare-row {
+        margin-top: 5px;
+      }
+
+      .compare-label {
+        color: var(--text-muted);
+
+        font-weight: 600;
+      }
+
+      .comparison-callout {
+        display: none;
+
+        margin-top: 14px;
+
+        padding: 12px 14px;
+
+        border: 1px solid #bae6fd;
+
+        border-radius: 12px;
+
+        background: #f0f9ff;
+
+        color: #075985;
+
+        font-size: 13px;
+
+        line-height: 1.6;
+      }
+
+      .comparison-callout.visible {
+        display: block;
+      }
+
+      /* =========================
+         RESULTS
+      ========================= */
+
+      .results {
+        display: grid;
+
+        grid-template-columns:
+          minmax(0, 1fr)
+          minmax(0, 1fr);
+
+        gap: 20px;
+      }
+
+      .result-card {
+        min-width: 0;
+
+        overflow: hidden;
+      }
+
+      .result-card.local-card {
+        border-top: 3px solid #111827;
+      }
+
+      .result-card.cloud-card {
+        border-top: 3px solid #2563eb;
+      }
+
+      .result-header {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: space-between;
+
+        gap: 16px;
+
+        padding: 17px 20px;
+
+        border-bottom: 1px solid var(--border);
+
+        background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+      }
+
+      .mode-area {
+        display: flex;
+
+        align-items: center;
+
+        gap: 11px;
+      }
+
+      .mode-dot {
+        width: 10px;
+        height: 10px;
+
+        border-radius: 50%;
+      }
+
+      .local-card .mode-dot {
+        background: #111827;
+      }
+
+      .cloud-card .mode-dot {
+        background: #2563eb;
+      }
+
+      .mode-name {
+        color: var(--text-main);
+
+        font-size: 19px;
+
+        font-weight: 800;
+      }
+
+      .mode-description {
+        margin-top: 2px;
+
+        color: var(--text-muted);
+
+        font-size: 11px;
+      }
+
+      .header-meta {
+        display: flex;
+
+        flex-wrap: wrap;
+
+        align-items: center;
+
+        justify-content: flex-end;
+
+        gap: 7px;
+      }
+
+      .duration {
+        display: inline-flex;
+
+        align-items: center;
+
+        padding: 6px 9px;
+
+        border-radius: 999px;
+
+        background: #eef2ff;
+
+        color: #3730a3;
+
+        font-size: 11px;
+
+        font-weight: 800;
+      }
+
+      .web-badge {
+        display: inline-flex;
+
+        align-items: center;
+
+        gap: 5px;
+
+        padding: 6px 9px;
+
+        border-radius: 999px;
+
+        font-size: 11px;
+
+        font-weight: 800;
+      }
+
+      .web-badge.used {
+        background: var(--success-bg);
+
+        color: var(--success-text);
+      }
+
+      .web-badge.not-used {
+        background: #f1f5f9;
+
+        color: var(--text-muted);
+      }
+
+      .web-badge.checking {
+        background: var(--warning-bg);
+
+        color: var(--warning-text);
+      }
+
+      .result-body {
+        padding: 20px;
+      }
+
+      /* =========================
+         MARKDOWN OUTPUT
+      ========================= */
+
+      .answer {
+        min-height: 280px;
+
+        color: var(--text-body);
+      }
+
+      .prose {
+        overflow-wrap: anywhere;
+
+        color: var(--text-body);
+
+        font-size: 14px;
+
+        line-height: 1.68;
+      }
+
+      .prose > :first-child {
+        margin-top: 0;
+      }
+
+      .prose > :last-child {
+        margin-bottom: 0;
+      }
+
+      .prose h1,
+      .prose h2,
+      .prose h3,
+      .prose h4 {
+        margin: 1.4em 0 0.65em;
+
+        color: var(--text-main);
+
+        line-height: 1.3;
+
+        letter-spacing: -0.015em;
+      }
+
+      .prose h1 {
+        font-size: 24px;
+      }
+
+      .prose h2 {
+        padding-bottom: 7px;
+
+        border-bottom: 1px solid #edf2f7;
+
+        font-size: 20px;
+      }
+
+      .prose h3 {
+        font-size: 17px;
+      }
+
+      .prose h4 {
+        font-size: 15px;
+      }
+
+      .prose p {
+        margin: 0.75em 0;
+      }
+
+      .prose strong {
+        color: var(--text-main);
+
+        font-weight: 800;
+      }
+
+      .prose em {
+        color: #475569;
+      }
+
+      .prose ul,
+      .prose ol {
+        margin: 0.75em 0 0.9em 1.3em;
+
+        padding: 0;
+      }
+
+      .prose li {
+        margin: 0.32em 0;
+
+        padding-left: 2px;
+      }
+
+      .prose blockquote {
+        margin: 1em 0;
+
+        padding: 12px 15px;
+
+        border-left: 4px solid #3b82f6;
+
+        border-radius: 0 10px 10px 0;
+
+        background: #eff6ff;
+
+        color: #1e40af;
+      }
+
+      .prose code {
+        padding: 2px 6px;
+
+        border: 1px solid #e2e8f0;
+
+        border-radius: 6px;
+
+        background: #f8fafc;
+
+        color: #be123c;
+
+        font-family: Consolas, "Courier New", monospace;
+
+        font-size: 0.9em;
+      }
+
+      .prose pre {
+        overflow-x: auto;
+
+        padding: 14px;
+
+        border-radius: 12px;
+
+        background: #0f172a;
+
+        color: #e2e8f0;
+      }
+
+      .prose pre code {
+        padding: 0;
+
+        border: 0;
+
+        background: transparent;
+
+        color: inherit;
+      }
+
+      .prose a {
+        color: #2563eb;
+
+        font-weight: 650;
+
+        text-decoration: none;
+      }
+
+      .prose a:hover {
+        text-decoration: underline;
+      }
+
+      .table-scroll {
+        overflow-x: auto;
+
+        margin: 1em 0;
+
+        border: 1px solid var(--border);
+
+        border-radius: 12px;
+
+        background: #ffffff;
+      }
+
+      .prose table {
+        width: 100%;
+
+        min-width: 520px;
+
+        border-collapse: collapse;
+
+        margin: 0;
+
+        font-size: 12.5px;
+      }
+
+      .prose thead {
+        background: #f1f5f9;
+      }
+
+      .prose th {
+        color: var(--text-main);
+
+        font-weight: 800;
+
+        white-space: nowrap;
+      }
+
+      .prose th,
+      .prose td {
+        padding: 10px 11px;
+
+        border-bottom: 1px solid #e5e7eb;
+
+        border-right: 1px solid #eef2f7;
+
+        text-align: left;
+
+        vertical-align: top;
+      }
+
+      .prose th:last-child,
+      .prose td:last-child {
+        border-right: 0;
+      }
+
+      .prose tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .prose tbody tr:nth-child(even) {
+        background: #fbfdff;
+      }
+
+      .prose tbody tr:hover {
+        background: #f8fafc;
+      }
+
+      /* =========================
+         LOADING
+      ========================= */
+
+      .loading-state {
+        display: flex;
+
+        align-items: center;
+
+        gap: 11px;
+
+        min-height: 80px;
+
+        color: var(--text-muted);
+
+        font-size: 13px;
+      }
+
+      .spinner {
+        width: 20px;
+        height: 20px;
+
+        border: 2px solid #dbeafe;
+
+        border-top-color: #2563eb;
+
+        border-radius: 50%;
+
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .error-box {
+        padding: 13px 14px;
+
+        border: 1px solid #fecaca;
+
+        border-radius: 12px;
+
+        background: #fef2f2;
+
+        color: #991b1b;
+
+        font-size: 13px;
+
+        line-height: 1.6;
+      }
+
+      /* =========================
+         SOURCE BADGES
+      ========================= */
+
+      .source-summary {
+        display: flex;
+
+        flex-wrap: wrap;
+
+        gap: 7px;
+
+        margin: 18px 0 0;
+      }
+
+      .source-chip {
+        display: inline-flex;
+
+        align-items: center;
+
+        gap: 5px;
+
+        padding: 5px 8px;
+
+        border-radius: 999px;
+
+        font-size: 10px;
+
+        font-weight: 800;
+
+        text-transform: uppercase;
+
+        letter-spacing: 0.035em;
+      }
+
+      .source-chip.crm {
+        background: var(--blue-bg);
+
+        color: var(--blue-text);
+      }
+
+      .source-chip.finops {
+        background: var(--purple-bg);
+
+        color: var(--purple-text);
+      }
+
+      .source-chip.sharepoint {
+        background: var(--cyan-bg);
+
+        color: var(--cyan-text);
+      }
+
+      .source-chip.web {
+        background: var(--success-bg);
+
+        color: var(--success-text);
+      }
+
+      .source-chip.common {
+        background: #f1f5f9;
+
+        color: #475569;
+      }
+
+      /* =========================
+         TOOLS
+      ========================= */
+
+      .tools {
+        margin-top: 18px;
+
+        padding-top: 15px;
+
+        border-top: 1px solid var(--border);
+      }
+
+      .tools-header {
+        display: flex;
+
+        justify-content: space-between;
+
+        align-items: center;
+
+        gap: 12px;
+
+        margin-bottom: 10px;
+      }
+
+      .tools-title {
+        color: var(--text-main);
+
+        font-size: 12px;
+
+        font-weight: 800;
+      }
+
+      .tools-count {
+        color: var(--text-muted);
+
+        font-size: 10px;
+
+        font-weight: 700;
+      }
+
+      .tool-list {
+        display: flex;
+
+        flex-wrap: wrap;
+
+        gap: 7px;
+      }
+
+      .tool {
+        display: inline-flex;
+
+        align-items: center;
+
+        max-width: 100%;
+
+        padding: 6px 9px;
+
+        border: 1px solid #e2e8f0;
+
+        border-radius: 999px;
+
+        background: #f8fafc;
+
+        color: #334155;
+
+        font-family: Consolas, "Courier New", monospace;
+
+        font-size: 10.5px;
+
+        overflow-wrap: anywhere;
+      }
+
+      .tool.web-tool {
+        border-color: #bbf7d0;
+
+        background: #f0fdf4;
+
+        color: #166534;
+      }
+
+      /* =========================
+         EMPTY STATE
+      ========================= */
+
+      .empty-state {
+        display: flex;
+
+        flex-direction: column;
+
+        align-items: center;
+
+        justify-content: center;
+
+        min-height: 250px;
+
+        padding: 28px;
+
+        text-align: center;
+      }
+
+      .empty-icon {
+        display: flex;
+
+        align-items: center;
+
+        justify-content: center;
+
+        width: 46px;
+        height: 46px;
+
+        margin-bottom: 12px;
+
+        border-radius: 14px;
+
+        background: #f1f5f9;
+
+        color: #64748b;
+
+        font-size: 20px;
+
+        font-weight: 800;
+      }
+
+      .empty-title {
+        color: var(--text-main);
+
+        font-size: 14px;
+
+        font-weight: 800;
+      }
+
+      .empty-text {
+        max-width: 300px;
+
+        margin-top: 5px;
+
+        color: var(--text-muted);
+
+        font-size: 12px;
+
+        line-height: 1.6;
+      }
+
+      /* =========================
+         RESPONSIVE
+      ========================= */
+
+      @media (max-width: 1200px) {
+        .comparison-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 1000px) {
+        .form-grid,
+        .results {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 680px) {
+        .page {
+          padding: 18px 14px 40px;
+        }
+
+        .page-header {
+          flex-direction: column;
+        }
+
+        .comparison-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .result-header {
+          align-items: flex-start;
+
+          flex-direction: column;
+        }
+
+        .header-meta {
+          justify-content: flex-start;
+        }
+
+        .actions {
+          display: grid;
+
+          grid-template-columns: 1fr;
+        }
+
+        .action-button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="page">
+      <!-- =====================================
+           HEADER
+      ====================================== -->
+
+      <header class="page-header">
+        <div class="title-area">
+          <h1>EON AI Playground</h1>
+
+          <p>
+            Compare reasoning, tool usage, response time, and web research
+            between Local and Cloud models.
+          </p>
+        </div>
+
+        <div class="environment-badge">
+          <span class="environment-dot"></span>
+          Development Playground
+        </div>
+      </header>
+
+      <!-- =====================================
+           INPUT PANEL
+      ====================================== -->
+
+      <section class="panel">
+        <div class="form-grid">
+          <div class="field">
+            <label for="opportunity-id">
+              Opportunity ID
+
+              <span class="label-hint"> active CRM record </span>
+            </label>
+
+            <input
+              id="opportunity-id"
+              type="text"
+              autocomplete="off"
+              placeholder="Masukkan Opportunity ID..."
+            />
+
+            <div class="helper">
+              Tidak ada ID yang diisi otomatis. Gunakan Opportunity yang memang
+              sedang ingin diuji.
+            </div>
+          </div>
+
+          <div class="field">
+            <label> Test Scenario </label>
+
+            <div class="preset-list">
+              <button type="button" class="preset-button" data-preset="summary">
+                <span class="preset-icon"></span>
+                Opportunity Summary
+              </button>
+
+              <button
+                type="button"
+                class="preset-button"
+                data-preset="competitor"
+              >
+                <span class="preset-icon"></span>
+                Competitor Research
+              </button>
+
+              <button
+                type="button"
+                class="preset-button"
+                data-preset="stakeholder"
+              >
+                <span class="preset-icon"></span>
+                Stakeholder Research
+              </button>
+
+              <button
+                type="button"
+                class="preset-button"
+                data-preset="external"
+              >
+                <span class="preset-icon"></span>
+                Internal + Web Insight
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="prompt"> Prompt </label>
+
+          <textarea
+            id="prompt"
+            placeholder="Tulis pertanyaan yang ingin diuji..."
+          >
+Ringkas kondisi opportunity ini: stage saat ini, kesiapan stok, Sales Order, delivery status, invoice, estimasi jarak pengiriman, dan MSDS produknya.</textarea
+          >
+
+          <div class="helper">
+            Gunakan tombol scenario di atas untuk mengisi prompt competitor,
+            stakeholder, atau web research.
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>Advanced / Authentication</summary>
+
+          <div class="advanced-body">
+            <div class="field">
+              <label for="bearer-token">
+                Bearer Token
+
+                <span class="label-hint"> optional </span>
+              </label>
+
+              <input
+                id="bearer-token"
+                type="password"
+                autocomplete="off"
+                placeholder="Kosongkan jika development endpoint tidak membutuhkan token"
+              />
+            </div>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button id="run-local" class="action-button" type="button">
+            Run Local
+          </button>
+
+          <button id="run-cloud" class="action-button" type="button">
+            Run Cloud
+          </button>
+
+          <button id="run-compare" class="action-button" type="button">
+            Compare Local vs Cloud
+          </button>
+
+          <button id="new-conversation" class="action-button" type="button">
+            New Conversation
+          </button>
+        </div>
+      </section>
+
+      <!-- =====================================
+           COMPARISON INSIGHT
+      ====================================== -->
+
+      <section id="comparison-panel" class="panel comparison-panel">
+        <div class="comparison-header">
+          <div>
+            <div class="comparison-title">Comparison Insight</div>
+
+            <div class="comparison-subtitle">
+              Factual differences from the current Local and Cloud runs.
+            </div>
+          </div>
+        </div>
+
+        <div id="comparison-grid" class="comparison-grid"></div>
+
+        <div id="comparison-callout" class="comparison-callout"></div>
+      </section>
+
+      <!-- =====================================
+           RESULT CARDS
+      ====================================== -->
+
+      <section class="results">
+        <!-- LOCAL -->
+
+        <article class="result-card local-card">
+          <header class="result-header">
+            <div class="mode-area">
+              <span class="mode-dot"></span>
+
+              <div>
+                <div class="mode-name">Local</div>
+
+                <div class="mode-description">Local model / Ollama</div>
+              </div>
+            </div>
+
+            <div class="header-meta">
+              <span id="local-web-badge" class="web-badge not-used">
+                Web Search: -
+              </span>
+
+              <span id="local-duration" class="duration"> - </span>
+            </div>
+          </header>
+
+          <div class="result-body">
+            <div id="local-result" class="answer prose">
+              <div class="empty-state">
+                <div class="empty-icon">L</div>
+
+                <div class="empty-title">Local belum dijalankan</div>
+
+                <div class="empty-text">
+                  Jalankan Local atau Compare untuk melihat hasil model lokal.
+                </div>
+              </div>
+            </div>
+
+            <div id="local-sources" class="source-summary"></div>
+
+            <div id="local-metrics" class="source-summary"></div>
+
+            <div id="local-tools" class="tools" style="display: none"></div>
+          </div>
+        </article>
+
+        <!-- CLOUD -->
+
+        <article class="result-card cloud-card">
+          <header class="result-header">
+            <div class="mode-area">
+              <span class="mode-dot"></span>
+
+              <div>
+                <div class="mode-name">Cloud</div>
+
+                <div class="mode-description">OpenAI cloud model</div>
+              </div>
+            </div>
+
+            <div class="header-meta">
+              <span id="cloud-web-badge" class="web-badge not-used">
+                Web Search: -
+              </span>
+
+              <span id="cloud-duration" class="duration"> - </span>
+            </div>
+          </header>
+
+          <div class="result-body">
+            <div id="cloud-result" class="answer prose">
+              <div class="empty-state">
+                <div class="empty-icon">C</div>
+
+                <div class="empty-title">Cloud belum dijalankan</div>
+
+                <div class="empty-text">
+                  Jalankan Cloud atau Compare untuk melihat hasil model cloud.
+                </div>
+              </div>
+            </div>
+
+            <div id="cloud-sources" class="source-summary"></div>
+
+            <div id="cloud-metrics" class="source-summary"></div>
+
+            <div id="cloud-tools" class="tools" style="display: none"></div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <!-- =====================================
+         MARKDOWN LIBRARY
+    ====================================== -->
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+
+    <!-- =====================================
+         PLAYGROUND SCRIPT
+    ====================================== -->
+
+    <script>
+      const conversations = {
+        local: null,
+        cloud: null,
+      };
+
+      function resetConversations() {
+        conversations.local = null;
+        conversations.cloud = null;
+        document.getElementById("comparison-panel").classList.remove("visible");
+      }
+
+      /* =====================================
+         PROMPT PRESETS
+      ====================================== */
+
+      const promptPresets = {
+        summary: `
+Ringkas kondisi opportunity ini secara profesional dan mudah dibaca.
+
+Tampilkan jika datanya tersedia:
+- stage dan status opportunity;
+- kesiapan stok per produk;
+- Sales Order;
+- delivery status;
+- invoice;
+- estimasi rute pengiriman;
+- MSDS produk.
+
+Gunakan hanya data yang tersedia dari tool yang relevan.
+Jika suatu data belum tersedia, jangan mengarang.
+Jangan tampilkan ID teknis atau detail backend yang tidak dibutuhkan user.
+        `.trim(),
+
+        competitor: `
+Analisis competitor untuk opportunity ini.
+
+Lakukan:
+1. Periksa terlebih dahulu competitor atau incumbent yang tercatat di data internal CRM.
+2. Jika web search tersedia, cari informasi publik terbaru mengenai competitor atau market alternative yang relevan dengan customer, industry, dan produk pada opportunity ini.
+3. Bedakan dengan jelas:
+   - competitor yang tercatat di CRM;
+   - public web evidence;
+   - market candidate.
+4. Jangan menyebut market candidate sebagai competitor opportunity jika belum ada bukti.
+5. Sertakan sumber publik jika tersedia.
+6. Jika web search tidak digunakan atau tidak menemukan bukti yang cukup, katakan secara singkat dan jangan mengarang.
+
+Jangan tampilkan ID teknis yang tidak diperlukan.
+        `.trim(),
+
+        stakeholder: `
+Analisis stakeholder untuk opportunity ini.
+
+Lakukan:
+1. Periksa stakeholder yang sudah tercatat di CRM.
+2. Identifikasi stakeholder gap yang masih perlu divalidasi Sales.
+3. Jika web search tersedia, cari informasi profesional publik yang relevan berdasarkan customer dan role yang dibutuhkan.
+4. Bedakan dengan jelas:
+   - stakeholder yang terverifikasi di CRM;
+   - public stakeholder candidate;
+   - target role yang masih belum memiliki nama terverifikasi.
+5. Jangan menyebut kandidat publik sebagai Decision Maker opportunity apabila belum terverifikasi di CRM.
+6. Jangan mengarang nama, jabatan, authority, email pribadi, atau nomor telepon.
+7. Sertakan sumber publik jika tersedia.
+
+Jika belum ditemukan kandidat yang valid, cukup jelaskan role yang perlu dicari tanpa membuat nama atau ID.
+        `.trim(),
+
+        external: `
+Ringkas kondisi opportunity ini dan tambahkan external intelligence jika relevan.
+
+Pisahkan jawaban menjadi:
+1. Internal Opportunity Facts
+2. Product / Stock / Delivery Readiness
+3. Competitor Insight
+4. Stakeholder Insight
+5. Public Web Insight
+6. Risk / Gap
+7. Recommended Next Action
+
+Untuk data internal gunakan CRM, FinOps, dan SharePoint sebagai source of truth.
+
+Jika web search tersedia:
+- gunakan untuk informasi publik customer;
+- competitor research;
+- stakeholder profesional publik;
+- market atau industry context.
+
+Bedakan data internal dan public web information dengan jelas.
+
+Jika web search tidak tersedia atau tidak menemukan informasi yang dapat diverifikasi:
+- katakan secara singkat;
+- jangan mengarang;
+- jangan membuat nama, ID, jabatan, competitor, atau sumber palsu.
+        `.trim(),
+      };
+
+      document.querySelectorAll(".preset-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const preset = button.dataset.preset;
+
+          const value = promptPresets[preset];
+
+          if (!value) {
+            return;
+          }
+
+          document.querySelectorAll(".preset-button").forEach((item) => {
+            item.classList.remove("active");
+          });
+
+          button.classList.add("active");
+
+          document.getElementById("prompt").value = value;
+        });
+      });
+
+      /* =====================================
+         REQUEST
+      ====================================== */
+
+      function getRequestBody(modelMode) {
+        const message = document.getElementById("prompt").value.trim();
+
+        const opportunityId = document
+          .getElementById("opportunity-id")
+          .value.trim();
+
+        const context = {};
+
+        if (opportunityId) {
+          context.opportunityId = opportunityId;
+        }
+
+        return {
+          message,
+          modelMode,
+          conversationId: conversations[modelMode] || undefined,
+          context,
+        };
+      }
+
+      function getHeaders() {
+        const token = document.getElementById("bearer-token").value.trim();
+
+        const headers = {
+          "Content-Type": "application/json",
+        };
+
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+
+        return headers;
+      }
+
+      function validateRequest() {
+        const prompt = document.getElementById("prompt").value.trim();
+
+        const opportunityId = document
+          .getElementById("opportunity-id")
+          .value.trim();
+
+        if (!prompt) {
+          throw new Error("Prompt belum diisi.");
+        }
+
+        /*
+         * Saat ini Sales Agent kamu
+         * menggunakan active Opportunity.
+         *
+         * Jadi untuk playground ini
+         * kita validasi ID terlebih dahulu.
+         */
+        if (!opportunityId) {
+          throw new Error("Opportunity ID belum diisi.");
+        }
+      }
+
+      async function callAgent(modelMode) {
+        validateRequest();
+
+        const startedAt = performance.now();
+
+        const response = await fetch("/api/agents/sales/chat", {
+          method: "POST",
+
+          headers: getHeaders(),
+
+          body: JSON.stringify(getRequestBody(modelMode)),
+        });
+
+        const durationMs = Math.round(performance.now() - startedAt);
+
+        let data;
+
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error(
+            `Server mengembalikan response yang tidak valid. HTTP ${response.status}`,
+          );
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ?? data?.error?.message ?? `HTTP ${response.status}`,
+          );
+        }
+
+        if (data?.conversationId) {
+          conversations[modelMode] = data.conversationId;
+        }
+
+        return {
+          data,
+          durationMs,
+        };
+      }
+
+      /* =====================================
+         MARKDOWN
+      ====================================== */
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function markdownToHtml(markdown) {
+        const value = String(markdown ?? "");
+
+        /*
+         * Fallback kalau CDN
+         * markdown gagal load.
+         */
+        if (!window.marked) {
+          return escapeHtml(value).replace(/\n/g, "<br>");
+        }
+
+        window.marked.setOptions({
+          gfm: true,
+          breaks: true,
+        });
+
+        const raw = window.marked.parse(value);
+
+        if (window.DOMPurify) {
+          return window.DOMPurify.sanitize(raw, {
+            ADD_ATTR: ["target", "rel"],
+          });
+        }
+
+        return raw;
+      }
+
+      function enhanceMarkdown(container) {
+        /*
+         * Wrap table agar
+         * horizontal scroll rapi.
+         */
+        container.querySelectorAll("table").forEach((table) => {
+          if (table.parentElement?.classList.contains("table-scroll")) {
+            return;
+          }
+
+          const wrapper = document.createElement("div");
+
+          wrapper.className = "table-scroll";
+
+          table.parentNode.insertBefore(wrapper, table);
+
+          wrapper.appendChild(table);
+        });
+
+        /*
+         * External links buka
+         * di new tab.
+         */
+        container.querySelectorAll("a").forEach((link) => {
+          link.target = "_blank";
+
+          link.rel = "noopener noreferrer";
+        });
+      }
+
+      /* =====================================
+         TOOL ANALYSIS
+      ====================================== */
+
+      function getToolNames(tools) {
+        return (Array.isArray(tools) ? tools : [])
+          .map((item) => {
+            if (typeof item === "string") {
+              return item;
+            }
+
+            return String(item?.tool ?? "");
+          })
+          .filter(Boolean);
+      }
+
+      function isWebTool(toolName) {
+        const name = String(toolName ?? "").toLowerCase();
+
+        return (
+          name.includes("websearch") ||
+          name.includes("web_search") ||
+          name.includes("web.search") ||
+          name.includes("web__search") ||
+          name.includes("searx")
+        );
+      }
+
+      function hasWebSearch(tools) {
+        return getToolNames(tools).some(isWebTool);
+      }
+
+      function detectSource(toolName) {
+        const value = String(toolName ?? "").toLowerCase();
+
+        if (isWebTool(value)) {
+          return "web";
+        }
+
+        if (value.includes("msds") || value.includes("sharepoint")) {
+          return "sharepoint";
+        }
+
+        if (
+          value.includes("opportunity") ||
+          value.includes("activit") ||
+          value.includes("crm")
+        ) {
+          return "crm";
+        }
+
+        if (
+          value.includes("stock") ||
+          value.includes("salesorder") ||
+          value.includes("sales_order") ||
+          value.includes("invoice") ||
+          value.includes("delivery") ||
+          value.includes("finops")
+        ) {
+          return "finops";
+        }
+
+        return "common";
+      }
+
+      function getSources(tools) {
+        const sourceMap = {
+          crm: "CRM",
+          finops: "FinOps",
+          sharepoint: "SharePoint",
+          web: "Web",
+          common: "Common",
+        };
+
+        const sources = new Set();
+
+        getToolNames(tools).forEach((tool) => {
+          const normalized = String(tool ?? "").toLowerCase();
+
+          if (normalized.includes("common.get_opportunity_intelligence")) {
+            sources.add("crm");
+            sources.add("finops");
+            sources.add("sharepoint");
+            return;
+          }
+
+          sources.add(detectSource(tool));
+        });
+
+        return Array.from(sources).map((source) => ({
+          key: source,
+
+          label: sourceMap[source] ?? source,
+        }));
+      }
+
+      /* =====================================
+         RESULT RENDER
+      ====================================== */
+
+      function setWebBadge(modelMode, tools) {
+        const badge = document.getElementById(`${modelMode}-web-badge`);
+
+        const used = hasWebSearch(tools);
+
+        badge.className = `web-badge ${used ? "used" : "not-used"}`;
+
+        badge.textContent = used ? "Web Search Used" : "No Web Search";
+      }
+
+      function renderSources(modelMode, tools) {
+        const element = document.getElementById(`${modelMode}-sources`);
+
+        const sources = getSources(tools);
+
+        element.innerHTML = "";
+
+        for (const source of sources) {
+          const chip = document.createElement("span");
+
+          chip.className = `source-chip ${source.key}`;
+
+          chip.textContent = source.label;
+
+          element.appendChild(chip);
+        }
+      }
+
+      function renderTools(modelMode, tools) {
+        const element = document.getElementById(`${modelMode}-tools`);
+
+        const toolNames = getToolNames(tools);
+
+        element.innerHTML = "";
+
+        if (toolNames.length === 0) {
+          element.style.display = "none";
+
+          return;
+        }
+
+        element.style.display = "block";
+
+        const header = document.createElement("div");
+
+        header.className = "tools-header";
+
+        const title = document.createElement("div");
+
+        title.className = "tools-title";
+
+        title.textContent = "Tools Used";
+
+        const count = document.createElement("div");
+
+        count.className = "tools-count";
+
+        count.textContent = `${toolNames.length} tool${
+          toolNames.length === 1 ? "" : "s"
+        }`;
+
+        header.appendChild(title);
+
+        header.appendChild(count);
+
+        const list = document.createElement("div");
+
+        list.className = "tool-list";
+
+        for (const name of toolNames) {
+          const tool = document.createElement("span");
+
+          tool.className = `tool ${isWebTool(name) ? "web-tool" : ""}`;
+
+          tool.textContent = name;
+
+          list.appendChild(tool);
+        }
+
+        element.appendChild(header);
+
+        element.appendChild(list);
+      }
+
+      function formatNumber(value) {
+        const number = Number(value ?? 0);
+        return Number.isFinite(number) ? number.toLocaleString("en-US") : "0";
+      }
+
+      function getBackendDurationMs(result) {
+        const value = Number(result?.data?.metrics?.durationMs);
+        return Number.isFinite(value) && value >= 0 ? value : result.durationMs;
+      }
+
+      function renderMetrics(modelMode, result) {
+        const element = document.getElementById(`${modelMode}-metrics`);
+        const metrics = result?.data?.metrics ?? {};
+        const backendDurationMs = getBackendDurationMs(result);
+
+        const items = [
+          `Backend ${(backendDurationMs / 1000).toFixed(2)} s`,
+          `Client ${(result.durationMs / 1000).toFixed(2)} s`,
+          `Steps ${formatNumber(metrics.steps)}`,
+          `Tokens ${formatNumber(metrics.totalTokens)}`,
+          `Cached ${formatNumber(metrics.cachedInputTokens)}`,
+        ];
+
+        element.innerHTML = "";
+        for (const text of items) {
+          const chip = document.createElement("span");
+          chip.className = "source-chip";
+          chip.textContent = text;
+          element.appendChild(chip);
+        }
+      }
+
+      function renderResult(modelMode, result) {
+        const resultElement = document.getElementById(`${modelMode}-result`);
+
+        const durationElement = document.getElementById(
+          `${modelMode}-duration`,
+        );
+
+        const answer = String(result?.data?.answer ?? "");
+
+        const tools = result?.data?.toolsUsed ?? [];
+
+        resultElement.className = "answer prose";
+
+        if (answer.trim()) {
+          resultElement.innerHTML = markdownToHtml(answer);
+
+          enhanceMarkdown(resultElement);
+        } else {
+          resultElement.innerHTML = `
+              <div class="error-box">
+                Model tidak mengembalikan jawaban.
+              </div>
+            `;
+        }
+
+        const backendDurationMs = getBackendDurationMs(result);
+        durationElement.textContent = `${(backendDurationMs / 1000).toFixed(2)} s`;
+
+        setWebBadge(modelMode, tools);
+
+        renderSources(modelMode, tools);
+
+        renderMetrics(modelMode, result);
+
+        renderTools(modelMode, tools);
+      }
+
+      /* =====================================
+         LOADING / ERROR
+      ====================================== */
+
+      function renderLoading(modelMode) {
+        const resultElement = document.getElementById(`${modelMode}-result`);
+
+        const badge = document.getElementById(`${modelMode}-web-badge`);
+
+        const duration = document.getElementById(`${modelMode}-duration`);
+
+        const sources = document.getElementById(`${modelMode}-sources`);
+
+        const metrics = document.getElementById(`${modelMode}-metrics`);
+
+        const tools = document.getElementById(`${modelMode}-tools`);
+
+        resultElement.className = "answer";
+
+        resultElement.innerHTML = `
+            <div class="loading-state">
+              <div class="spinner"></div>
+
+              <div>
+                ${
+                  modelMode === "local"
+                    ? "Local model sedang memproses..."
+                    : "Cloud model sedang memproses..."
+                }
+              </div>
+            </div>
+          `;
+
+        badge.className = "web-badge checking";
+
+        badge.textContent = "Checking tools...";
+
+        duration.textContent = "...";
+
+        sources.innerHTML = "";
+
+        metrics.innerHTML = "";
+
+        tools.innerHTML = "";
+
+        tools.style.display = "none";
+      }
+
+      function renderError(modelMode, error) {
+        const resultElement = document.getElementById(`${modelMode}-result`);
+
+        const badge = document.getElementById(`${modelMode}-web-badge`);
+
+        const duration = document.getElementById(`${modelMode}-duration`);
+
+        const metrics = document.getElementById(`${modelMode}-metrics`);
+
+        resultElement.className = "answer";
+
+        resultElement.innerHTML = `
+            <div class="error-box">
+              ${escapeHtml(error?.message ?? "Unknown error")}
+            </div>
+          `;
+
+        badge.className = "web-badge not-used";
+
+        badge.textContent = "Request Error";
+
+        duration.textContent = "-";
+
+        if (metrics) {
+          metrics.innerHTML = "";
+        }
+      }
+
+      function setButtonsDisabled(disabled) {
+        document.querySelectorAll(".action-button").forEach((button) => {
+          button.disabled = disabled;
+        });
+      }
+
+      /* =====================================
+         COMPARISON
+      ====================================== */
+
+      function renderComparison(localResult, cloudResult) {
+        const panel = document.getElementById("comparison-panel");
+
+        const grid = document.getElementById("comparison-grid");
+
+        const callout = document.getElementById("comparison-callout");
+
+        if (!localResult || !cloudResult) {
+          panel.classList.remove("visible");
+
+          return;
+        }
+
+        const localTools = localResult.data?.toolsUsed ?? [];
+
+        const cloudTools = cloudResult.data?.toolsUsed ?? [];
+
+        const localToolNames = getToolNames(localTools);
+
+        const cloudToolNames = getToolNames(cloudTools);
+
+        const localWeb = hasWebSearch(localTools);
+
+        const cloudWeb = hasWebSearch(cloudTools);
+
+        const localSources = getSources(localTools).map((item) => item.label);
+
+        const cloudSources = getSources(cloudTools).map((item) => item.label);
+
+        const localMetrics = localResult.data?.metrics ?? {};
+        const cloudMetrics = cloudResult.data?.metrics ?? {};
+
+        const localSeconds = getBackendDurationMs(localResult) / 1000;
+        const cloudSeconds = getBackendDurationMs(cloudResult) / 1000;
+        const localClientSeconds = localResult.durationMs / 1000;
+        const cloudClientSeconds = cloudResult.durationMs / 1000;
+
+        let fasterText;
+
+        if (Math.abs(localSeconds - cloudSeconds) < 0.05) {
+          fasterText = "Hampir sama";
+        } else if (localSeconds < cloudSeconds) {
+          fasterText = `Local lebih cepat ${(
+            cloudSeconds - localSeconds
+          ).toFixed(2)} s`;
+        } else {
+          fasterText = `Cloud lebih cepat ${(
+            localSeconds - cloudSeconds
+          ).toFixed(2)} s`;
+        }
+
+        grid.innerHTML = `
+            <div class="compare-box web">
+              <div class="compare-box-title">
+                Web Search
+              </div>
+
+              <div class="compare-value">
+                <div class="compare-row">
+                  <span class="compare-label">Local</span>
+                  <span>${localWeb ? "Used" : "Not used"}</span>
+                </div>
+
+                <div class="compare-row">
+                  <span class="compare-label">Cloud</span>
+                  <span>${cloudWeb ? "Used" : "Not used"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="compare-box speed">
+              <div class="compare-box-title">
+                Backend Duration
+              </div>
+
+              <div class="compare-value">
+                <div class="compare-row">
+                  <span class="compare-label">Local</span>
+                  <span>${localSeconds.toFixed(2)} s</span>
+                </div>
+
+                <div class="compare-row">
+                  <span class="compare-label">Cloud</span>
+                  <span>${cloudSeconds.toFixed(2)} s</span>
+                </div>
+
+                <div style="margin-top: 7px; color: #7c3aed;">
+                  ${fasterText}
+                </div>
+              </div>
+            </div>
+
+            <div class="compare-box tools">
+              <div class="compare-box-title">
+                Tool Calls
+              </div>
+
+              <div class="compare-value">
+                <div class="compare-row">
+                  <span class="compare-label">Local</span>
+                  <span>${localToolNames.length}</span>
+                </div>
+
+                <div class="compare-row">
+                  <span class="compare-label">Cloud</span>
+                  <span>${cloudToolNames.length}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="compare-box">
+              <div class="compare-box-title">
+                Client Wall Time
+              </div>
+              <div class="compare-value">
+                <div class="compare-row"><span class="compare-label">Local</span><span>${localClientSeconds.toFixed(2)} s</span></div>
+                <div class="compare-row"><span class="compare-label">Cloud</span><span>${cloudClientSeconds.toFixed(2)} s</span></div>
+              </div>
+            </div>
+
+            <div class="compare-box">
+              <div class="compare-box-title">
+                Agent Steps
+              </div>
+              <div class="compare-value">
+                <div class="compare-row"><span class="compare-label">Local</span><span>${formatNumber(localMetrics.steps)}</span></div>
+                <div class="compare-row"><span class="compare-label">Cloud</span><span>${formatNumber(cloudMetrics.steps)}</span></div>
+              </div>
+            </div>
+
+            <div class="compare-box">
+              <div class="compare-box-title">
+                Total Tokens
+              </div>
+              <div class="compare-value">
+                <div class="compare-row"><span class="compare-label">Local</span><span>${formatNumber(localMetrics.totalTokens)}</span></div>
+                <div class="compare-row"><span class="compare-label">Cloud</span><span>${formatNumber(cloudMetrics.totalTokens)}</span></div>
+                <div style="margin-top: 5px; color: var(--text-muted);">Input L/C: ${formatNumber(localMetrics.inputTokens)} / ${formatNumber(cloudMetrics.inputTokens)}</div>
+              </div>
+            </div>
+
+            <div class="compare-box">
+              <div class="compare-box-title">
+                Cached Input Tokens
+              </div>
+              <div class="compare-value">
+                <div class="compare-row"><span class="compare-label">Local</span><span>${formatNumber(localMetrics.cachedInputTokens)}</span></div>
+                <div class="compare-row"><span class="compare-label">Cloud</span><span>${formatNumber(cloudMetrics.cachedInputTokens)}</span></div>
+              </div>
+            </div>
+
+            <div class="compare-box sources">
+              <div class="compare-box-title">
+                Source Coverage
+              </div>
+
+              <div class="compare-value">
+                <div>
+                  <span class="compare-label">Local:</span>
+                  ${escapeHtml(localSources.join(", ") || "-")}
+                </div>
+
+                <div style="margin-top: 5px;">
+                  <span class="compare-label">Cloud:</span>
+                  ${escapeHtml(cloudSources.join(", ") || "-")}
+                </div>
+              </div>
+            </div>
+          `;
+
+        /*
+         * Highlight khusus Web Search.
+         *
+         * Tidak menilai model mana
+         * "lebih bagus".
+         *
+         * Hanya menunjukkan fakta
+         * perbedaan penggunaan tool.
+         */
+
+        let calloutText = "";
+
+        if (localWeb && !cloudWeb) {
+          calloutText =
+            "Perbedaan web research: pada request ini hanya Local yang menggunakan Web Search. Periksa hasil Public Web Insight Local untuk melihat competitor, stakeholder, atau informasi eksternal yang ditemukan.";
+        } else if (!localWeb && cloudWeb) {
+          calloutText =
+            "Perbedaan web research: pada request ini hanya Cloud yang menggunakan Web Search. Periksa hasil Public Web Insight Cloud untuk melihat competitor, stakeholder, atau informasi eksternal yang ditemukan.";
+        } else if (localWeb && cloudWeb) {
+          calloutText =
+            "Local dan Cloud sama-sama menggunakan Web Search pada request ini. Bandingkan sumber, kandidat stakeholder, competitor evidence, dan tingkat kepastian yang diberikan masing-masing model.";
+        } else {
+          calloutText =
+            "Tidak ada Web Search yang digunakan oleh Local maupun Cloud pada request ini. Jika ingin menguji external intelligence, gunakan preset Competitor Research atau Stakeholder Research.";
+        }
+
+        callout.textContent = calloutText;
+
+        callout.classList.add("visible");
+
+        panel.classList.add("visible");
+      }
+
+      /* =====================================
+         RUN SINGLE MODEL
+      ====================================== */
+
+      async function run(modelMode) {
+        try {
+          validateRequest();
+        } catch (error) {
+          renderError(modelMode, error);
+
+          return;
+        }
+
+        setButtonsDisabled(true);
+
+        renderLoading(modelMode);
+
+        try {
+          const result = await callAgent(modelMode);
+
+          renderResult(modelMode, result);
+        } catch (error) {
+          renderError(modelMode, error);
+        } finally {
+          setButtonsDisabled(false);
+        }
+      }
+
+      /* =====================================
+         COMPARE
+      ====================================== */
+
+      async function compare() {
+        try {
+          validateRequest();
+        } catch (error) {
+          renderError("local", error);
+
+          renderError("cloud", error);
+
+          return;
+        }
+
+        setButtonsDisabled(true);
+
+        renderLoading("local");
+
+        renderLoading("cloud");
+
+        document.getElementById("comparison-panel").classList.remove("visible");
+
+        try {
+          const results = await Promise.allSettled([
+            callAgent("local"),
+
+            callAgent("cloud"),
+          ]);
+
+          const local = results[0];
+
+          const cloud = results[1];
+
+          let localValue = null;
+
+          let cloudValue = null;
+
+          if (local.status === "fulfilled") {
+            localValue = local.value;
+
+            renderResult("local", local.value);
+          } else {
+            renderError("local", local.reason);
+          }
+
+          if (cloud.status === "fulfilled") {
+            cloudValue = cloud.value;
+
+            renderResult("cloud", cloud.value);
+          } else {
+            renderError("cloud", cloud.reason);
+          }
+
+          if (localValue && cloudValue) {
+            renderComparison(localValue, cloudValue);
+          }
+        } finally {
+          setButtonsDisabled(false);
+        }
+      }
+
+      /* =====================================
+         EVENTS
+      ====================================== */
+
+      document.getElementById("run-local").addEventListener("click", () => {
+        run("local");
+      });
+
+      document.getElementById("run-cloud").addEventListener("click", () => {
+        run("cloud");
+      });
+
+      document.getElementById("run-compare").addEventListener("click", compare);
+
+      document.getElementById("new-conversation").addEventListener("click", () => {
+        resetConversations();
+      });
+
+      /*
+       * Ctrl + Enter
+       * menjalankan Compare.
+       */
+      document.getElementById("prompt").addEventListener("keydown", (event) => {
+        if (event.ctrlKey && event.key === "Enter") {
+          event.preventDefault();
+
+          compare();
+        }
+      });
+    </script>
+  </body>
+</html>
