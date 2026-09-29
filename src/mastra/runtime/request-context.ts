@@ -1,20 +1,44 @@
 import { RequestContext } from "@mastra/core/request-context";
+
 import type { ModelMode } from "../../config/models/model.types.js";
+
+export type ChannelRequestContext = {
+  platform: string;
+  channelId: string;
+
+  threadId?: string;
+
+  userId: string;
+
+  messageId?: string;
+};
 
 export type EonRequestContext = {
   opportunityId?: string;
+
   requestId?: string;
+
   agentId?: string;
+
   modelMode?: ModelMode;
+
   conversationId?: string;
+
+  channel?: ChannelRequestContext;
 };
 
 export function buildAgentRequestContext(input: {
   opportunityId?: string;
+
   requestId?: string;
+
   agentId: string;
+
   modelMode: ModelMode;
+
   conversationId: string;
+
+  channel?: ChannelRequestContext;
 }) {
   const requestContext = new RequestContext<EonRequestContext>();
 
@@ -27,8 +51,14 @@ export function buildAgentRequestContext(input: {
   }
 
   requestContext.set("agentId", input.agentId);
+
   requestContext.set("modelMode", input.modelMode);
+
   requestContext.set("conversationId", input.conversationId);
+
+  if (input.channel) {
+    requestContext.set("channel", input.channel);
+  }
 
   return requestContext;
 }

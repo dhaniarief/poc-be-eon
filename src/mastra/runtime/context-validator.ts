@@ -2,22 +2,31 @@ import { z } from "zod";
 
 import { AppError } from "../../errors/app.error.js";
 
+export type ChannelContext = {
+  platform: string;
+
+  channelId: string;
+
+  threadId?: string;
+
+  userId: string;
+
+  messageId?: string;
+};
+
 export type AgentContext = {
   opportunityId?: string;
+
+  channel?: ChannelContext;
 };
 
 const opportunityIdSchema = z.string().uuid();
 
 export function validateAgentContext(agentId: string, context?: AgentContext) {
   if (agentId !== "sales") {
-    return context;
+    return context ?? {};
   }
 
-  //
-  // Sales sekarang boleh dimulai tanpa opportunityId.
-  // Opportunity dapat dipilih kemudian melalui
-  // setActiveOpportunity.
-  //
   if (!context?.opportunityId) {
     return context ?? {};
   }
@@ -34,6 +43,7 @@ export function validateAgentContext(agentId: string, context?: AgentContext) {
 
   return {
     ...context,
+
     opportunityId: parsed.data,
   };
 }

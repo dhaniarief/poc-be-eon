@@ -4,10 +4,14 @@ import { writeBusinessEvent } from "../../logging/operation-logger.js";
 import { getAgentKey } from "../agents/agent.registry.js";
 import { mastra } from "../index.js";
 import { agentMemory } from "../memory.js";
-import { validateAgentContext } from "./context-validator.js";
+import {
+  validateAgentContext,
+  type AgentContext,
+} from "./context-validator.js";
 import { buildAgentRequestContext } from "./request-context.js";
 import { buildAgentPrompt } from "./prompt-builder.js";
 import { createToolTracker } from "./tool-tracker.js";
+import { normalizeTeamsMessage } from "../../services/teams/teams-message.service.js";
 import {
   compactJson,
   extractLabeledToolResults,
@@ -18,12 +22,19 @@ import { buildAgentMetrics, type UsageLike } from "./agent-metrics.js";
 
 export type RunAgentInput = {
   agentId: string;
+
   modelMode: ModelMode;
+
   message: string;
-  context?: Record<string, unknown>;
+
+  context?: AgentContext;
+
   conversationId: string;
+
   threadId?: string;
+
   resourceId?: string;
+
   requestId?: string;
 };
 
@@ -57,7 +68,7 @@ export async function runAgent(input: RunAgentInput) {
     resourceId,
     requestId,
   } = input;
-
+  const normalizedMessage = normalizeTeamsMessage(message);
   const startedAt = Date.now();
   const validatedContext = validateAgentContext(agentId, context);
   const opportunityId = validatedContext?.opportunityId;
@@ -68,10 +79,16 @@ export async function runAgent(input: RunAgentInput) {
 
     const requestContext = buildAgentRequestContext({
       opportunityId,
+
       requestId,
+
       agentId,
+
       modelMode,
+
       conversationId,
+
+      channel: validatedContext?.channel,
     });
 
     const memoryOptions =
@@ -85,7 +102,7 @@ export async function runAgent(input: RunAgentInput) {
         : {};
 
     const prompt = buildAgentPrompt({
-      message,
+      message: normalizedMessage.normalizedText || normalizedMessage.rawText,
       agentId,
       hasOpportunityContext: Boolean(opportunityId),
     });
@@ -99,7 +116,11 @@ export async function runAgent(input: RunAgentInput) {
       },
     });
 
-    trackStepTools(firstPass.steps as unknown[] | undefined, agentId, toolTracker);
+    trackStepTools(
+      firstPass.steps as unknown[] | undefined,
+      agentId,
+      toolTracker,
+    );
 
     let finalText = String(firstPass.text ?? "").trim();
     let synthesisUsage: UsageLike | null = null;
@@ -121,8 +142,13 @@ export async function runAgent(input: RunAgentInput) {
       if (needsSynthesis) {
         synthesisUsed = true;
         const synthesisAgent = mastra.getAgent("localSynthesis");
-        const synthesisPrompt = `USER QUESTION\n${message.trim()}\n\nVERIFIED TOOL RESULTS\n${compactJson(labeledToolResults)}\n\nCreate a concise final answer using only these verified results.`;
+        const synthesisPrompt = `USER QUESTION
+${(normalizedMessage.normalizedText || normalizedMessage.rawText).trim()}
 
+VERIFIED TOOL RESULTS
+${compactJson(labeledToolResults)}
+
+Create a concise final answer using only these verified results.`;
         const secondPass = await synthesisAgent.generate(synthesisPrompt, {
           requestContext,
           modelSettings: {
