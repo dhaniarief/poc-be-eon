@@ -10,6 +10,18 @@ type TeamsActivity = {
   type?: string;
   text?: string;
 
+  id?: string;
+
+  from?: {
+    id?: string;
+    name?: string;
+  };
+
+  recipient?: {
+    id?: string;
+    name?: string;
+  };
+
   entities?: Array<{
     type?: string;
     id?: string;
@@ -36,40 +48,69 @@ type TeamsActivity = {
 };
 
 /**
- * Detect apakah request berasal dari
- * Microsoft Copilot.
+ * ============================================================
+ * DETECT MICROSOFT COPILOT ACTIVITY
+ * ============================================================
+ *
+ * Jangan case-sensitive.
+ *
+ * Payload Microsoft dapat membawa:
+ *
+ * COPILOT
+ * Copilot
+ * copilot
+ *
+ * tergantung surface / client yang mengirim activity.
  */
 function isCopilotActivity(activity: TeamsActivity): boolean {
   /**
-   * Dari log real kamu:
-   *
-   * channelData.productContext = "COPILOT"
+   * ----------------------------------------------------------
+   * CHECK #1
+   * channelData.productContext
+   * ----------------------------------------------------------
    */
-  if (activity.channelData?.productContext === "COPILOT") {
+  const productContext = String(activity?.channelData?.productContext ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (productContext === "COPILOT") {
     return true;
   }
 
   /**
-   * Copilot juga membawa:
-   *
-   * {
-   *   type: "ProductInfo",
-   *   id: "COPILOT"
-   * }
+   * ----------------------------------------------------------
+   * CHECK #2
+   * ProductInfo entity
+   * ----------------------------------------------------------
    */
-  return Boolean(
-    activity.entities?.some(
-      (entity) => entity.type === "ProductInfo" && entity.id === "COPILOT",
-    ),
+  const hasCopilotProductInfo = Boolean(
+    activity?.entities?.some((entity) => {
+      const entityType = String(entity?.type ?? "")
+        .trim()
+        .toLowerCase();
+
+      const entityId = String(entity?.id ?? "")
+        .trim()
+        .toUpperCase();
+
+      return entityType === "productinfo" && entityId === "COPILOT";
+    }),
   );
+
+  if (hasCopilotProductInfo) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
- * Convert Express Request
- * menjadi Web API Request.
+ * ============================================================
+ * EXPRESS REQUEST -> WEB REQUEST
+ * ============================================================
  *
- * Chat SDK menggunakan Request,
- * bukan ExpressRequest.
+ * Chat SDK menggunakan Web API Request,
+ * bukan Express Request.
  */
 function createWebRequest(req: ExpressRequest): Request {
   const headers = new Headers();
@@ -80,8 +121,10 @@ function createWebRequest(req: ExpressRequest): Request {
     }
 
     /**
-     * Jangan copy content-length,
-     * karena body akan dibuat ulang.
+     * Jangan copy content-length.
+     *
+     * Body dibuat ulang menggunakan JSON.stringify(req.body),
+     * sehingga panjang body mungkin berbeda.
      */
     if (key.toLowerCase() === "content-length") {
       continue;
@@ -99,26 +142,32 @@ function createWebRequest(req: ExpressRequest): Request {
   headers.set("content-type", "application/json");
 
   /**
-   * Kalau lewat dev tunnel / reverse proxy,
-   * gunakan x-forwarded-proto.
+   * Support reverse proxy / dev tunnel / nginx.
    */
   const forwardedProto = req.headers["x-forwarded-proto"];
 
   const protocol =
     typeof forwardedProto === "string"
-      ? forwardedProto.split(",")[0].trim()
+      ? forwardedProto.split(",")[0]?.trim() || req.protocol
       : req.protocol;
 
-  const host = req.get("host") ?? "localhost";
+  const forwardedHost = req.headers["x-forwarded-host"];
 
-  const url = `${protocol}://${host}${req.originalUrl}`;
+  const host =
+    typeof forwardedHost === "string"
+      ? forwardedHost.split(",")[0]?.trim()
+      : req.get("host");
+
+  const safeHost = host || "localhost";
+
+  const url = `${protocol}://${safeHost}${req.originalUrl}`;
 
   return new Request(url, {
-    method: "POST",
+    method: req.method || "POST",
 
     headers,
 
-    body: JSON.stringify(req.body),
+    body: JSON.stringify(req.body ?? {}),
   });
 }
 
@@ -132,70 +181,151 @@ export async function copilotTeamsMiddleware(
   res: ExpressResponse,
   next: NextFunction,
 ) {
-  const activity = req.body as TeamsActivity;
+  const activity = (req.body ?? {}) as TeamsActivity;
+
+  /**
+   * ----------------------------------------------------------
+   * DEBUG INCOMING ACTIVITY
+   * ----------------------------------------------------------
+   *
+   * Log ini penting untuk mengetahui perbedaan payload antara:
+   *
+   * 1. Teams direct chat
+   * 2. Copilot web
+   * 3. Copilot inside Teams
+   */
+  console.log("[TEAMS ACTIVITY CHECK]", {
+    type: activity?.type ?? null,
+
+    activityId: activity?.id ?? null,
+
+    conversationId: activity?.conversation?.id ?? null,
+
+    conversationType: activity?.conversation?.conversationType ?? null,
+
+    isGroup: activity?.conversation?.isGroup ?? null,
+
+    productContext: activity?.channelData?.productContext ?? null,
+
+    entityTypes:
+      activity?.entities?.map((entity) => ({
+        type: entity?.type ?? null,
+        id: entity?.id ?? null,
+      })) ?? [],
+
+    fromId: activity?.from?.id ?? null,
+
+    recipientId: activity?.recipient?.id ?? null,
+
+    textLength: String(activity?.text ?? "").length,
+  });
 
   /**
    * ==========================================================
    * BUKAN COPILOT
    * ==========================================================
    *
-   * Direct Teams tetap diproses
-   * oleh agentRouter / Mastra Channels.
+   * Teams biasa tetap diteruskan ke middleware/router
+   * berikutnya.
    */
   if (!isCopilotActivity(activity)) {
+    console.log("[NOT COPILOT - PASS THROUGH]", {
+      type: activity?.type ?? null,
+
+      activityId: activity?.id ?? null,
+
+      conversationId: activity?.conversation?.id ?? null,
+
+      productContext: activity?.channelData?.productContext ?? null,
+    });
+
     return next();
   }
 
+  /**
+   * ==========================================================
+   * COPILOT DETECTED
+   * ==========================================================
+   */
   console.log("[COPILOT INTERCEPTED]", {
-    type: activity.type ?? null,
+    type: activity?.type ?? null,
 
-    text: activity.text ?? null,
+    activityId: activity?.id ?? null,
 
-    conversationId: activity.conversation?.id ?? null,
+    text: activity?.text ?? null,
 
-    conversationType: activity.conversation?.conversationType ?? null,
+    conversationId: activity?.conversation?.id ?? null,
 
-    isGroup: activity.conversation?.isGroup ?? null,
+    conversationType: activity?.conversation?.conversationType ?? null,
 
-    productContext: activity.channelData?.productContext ?? null,
+    isGroup: activity?.conversation?.isGroup ?? null,
+
+    productContext: activity?.channelData?.productContext ?? null,
+
+    tenantId: activity?.channelData?.tenant?.id ?? null,
   });
 
   try {
+    /**
+     * Convert Express Request menjadi standard Request
+     * untuk Chat SDK.
+     */
     const webRequest = createWebRequest(req);
 
+    console.log("[COPILOT CHAT SDK START]", {
+      activityId: activity?.id ?? null,
+
+      conversationId: activity?.conversation?.id ?? null,
+
+      type: activity?.type ?? null,
+    });
+
     /**
-     * Ini menjalankan Chat SDK.
+     * ========================================================
+     * CHAT SDK WEBHOOK
+     * ========================================================
      *
-     * Untuk message mention,
-     * handler di:
+     * Chat SDK akan menentukan handler:
      *
-     * copilot.bot.ts
+     * Direct Message
+     *      ↓
+     * onDirectMessage
      *
-     * akan terpanggil:
+     * Subscribed Thread
+     *      ↓
+     * onSubscribedMessage
      *
-     * copilotBot.onNewMention(...)
+     * First Mention
+     *      ↓
+     * onNewMention
+     *
+     * Message biasa pada unsubscribed thread
+     *      ↓
+     * onNewMessage
      */
     const webResponse = await copilotBot.webhooks.teams(webRequest);
 
     console.log("[COPILOT WEBHOOK RESPONSE]", {
+      activityId: activity?.id ?? null,
+
+      conversationId: activity?.conversation?.id ?? null,
+
       status: webResponse.status,
     });
 
     /**
-     * Copy status response dari
-     * Chat SDK ke Express.
+     * Copy HTTP status dari Chat SDK.
      */
     res.status(webResponse.status);
 
     /**
-     * Copy headers.
+     * Copy response headers.
      */
     webResponse.headers.forEach((value, key) => {
       const lowerKey = key.toLowerCase();
 
       /**
-       * Express biarkan menghitung
-       * content-length sendiri.
+       * Biarkan Express menentukan sendiri.
        */
       if (lowerKey === "content-length" || lowerKey === "transfer-encoding") {
         return;
@@ -204,6 +334,9 @@ export async function copilotTeamsMiddleware(
       res.setHeader(key, value);
     });
 
+    /**
+     * Copy response body.
+     */
     const body = await webResponse.text();
 
     if (body) {
@@ -218,9 +351,21 @@ export async function copilotTeamsMiddleware(
         ? {
             message: error.message,
 
+            name: error.name,
+
             stack: error.stack,
+
+            activityId: activity?.id ?? null,
+
+            conversationId: activity?.conversation?.id ?? null,
           }
-        : error,
+        : {
+            error,
+
+            activityId: activity?.id ?? null,
+
+            conversationId: activity?.conversation?.id ?? null,
+          },
     );
 
     return res.status(500).json({

@@ -10,6 +10,11 @@ import { getTeamsToken } from "./teams-token.service.js";
 
 import { runAgent } from "../../mastra/runtime/agent.runner.js";
 
+/**
+ * ============================================================
+ * COPILOT CHAT BOT
+ * ============================================================
+ */
 export const copilotBot = new Chat({
   userName: "EON AI",
 
@@ -27,31 +32,102 @@ export const copilotBot = new Chat({
     }),
   },
 
+  /**
+   * NOTE:
+   *
+   * Untuk sekarang tetap menggunakan memory state.
+   *
+   * Nanti untuk production sebaiknya diganti PostgreSQL
+   * supaya subscription thread tidak hilang saat:
+   *
+   * - server restart
+   * - PM2 restart
+   * - deployment
+   * - multiple instance
+   */
   state: createMemoryState(),
 
   logger: "debug",
 });
 
 /**
- * Main handler untuk semua message Teams.
+ * ============================================================
+ * SUBSCRIBE THREAD
+ * ============================================================
+ *
+ * Helper untuk first mention / fallback message.
+ */
+async function subscribeCopilotThread(thread: any, source: string) {
+  const threadId = thread?.id ?? null;
+
+  if (typeof thread?.subscribe !== "function") {
+    console.warn("[COPILOT SUBSCRIBE NOT AVAILABLE]", {
+      source,
+
+      threadId,
+    });
+
+    return;
+  }
+
+  try {
+    /**
+     * Kalau API isSubscribed tersedia,
+     * jangan subscribe ulang.
+     */
+    if (typeof thread?.isSubscribed === "function") {
+      const subscribed = await thread.isSubscribed();
+
+      if (subscribed) {
+        console.log("[COPILOT THREAD ALREADY SUBSCRIBED]", {
+          source,
+
+          threadId,
+        });
+
+        return;
+      }
+    }
+
+    await thread.subscribe();
+
+    console.log("[COPILOT THREAD SUBSCRIBED]", {
+      source,
+
+      threadId,
+    });
+  } catch (error) {
+    /**
+     * Subscription tidak boleh menggagalkan
+     * pemrosesan first message.
+     */
+    console.warn("[COPILOT THREAD SUBSCRIBE FAILED]", {
+      source,
+
+      threadId,
+
+      error,
+    });
+  }
+}
+
+/**
+ * ============================================================
+ * MAIN MESSAGE HANDLER
+ * ============================================================
+ *
+ * Semua message akhirnya masuk ke function ini.
  *
  * Digunakan oleh:
- * - Direct message / personal chat
- * - First mention
- * - Follow-up message setelah subscribe
+ *
+ * - Direct Message
+ * - First Mention
+ * - Subscribed Message
+ * - First Message Fallback
  */
 async function handleCopilotMessage(thread: any, message: any) {
   const startedAt = Date.now();
 
-  /**
-   * Jangan langsung akses:
-   *
-   * message.id
-   * thread.id
-   *
-   * karena pada activity tertentu metadata bisa saja
-   * belum lengkap.
-   */
   const threadId = thread?.id ?? null;
 
   const incomingMessageId = message?.id ?? null;
@@ -66,11 +142,15 @@ async function handleCopilotMessage(thread: any, message: any) {
 
     channelId: thread?.channelId ?? null,
 
+    isDM: thread?.isDM ?? null,
+
     messageId: incomingMessageId,
+
+    isMention: message?.isMention ?? null,
 
     userId: resourceId,
 
-    userName: message?.author?.userName ?? null,
+    userName: message?.author?.userName ?? message?.author?.fullName ?? null,
 
     textLength: text.length,
 
@@ -78,8 +158,9 @@ async function handleCopilotMessage(thread: any, message: any) {
   });
 
   /**
-   * Thread ID wajib ada karena digunakan juga
-   * sebagai conversation ID Mastra.
+   * ==========================================================
+   * VALIDATE THREAD
+   * ==========================================================
    */
   if (!threadId) {
     console.error("[COPILOT INVALID THREAD]", {
@@ -94,10 +175,7 @@ async function handleCopilotMessage(thread: any, message: any) {
   }
 
   /**
-   * Message ID kita log sebagai warning saja.
-   *
-   * Jangan menggagalkan request hanya karena
-   * message.id tidak tersedia.
+   * Message ID tidak wajib.
    */
   if (!incomingMessageId) {
     console.warn("[COPILOT MESSAGE WITHOUT ID]", {
@@ -108,7 +186,9 @@ async function handleCopilotMessage(thread: any, message: any) {
   }
 
   /**
-   * Message kosong.
+   * ==========================================================
+   * EMPTY MESSAGE
+   * ==========================================================
    */
   if (!text) {
     try {
@@ -124,7 +204,13 @@ async function handleCopilotMessage(thread: any, message: any) {
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
-      console.error("[COPILOT EMPTY RESPONSE FAILED]", error);
+      console.error("[COPILOT EMPTY RESPONSE FAILED]", {
+        threadId,
+
+        incomingMessageId,
+
+        error,
+      });
     }
 
     return;
@@ -132,27 +218,29 @@ async function handleCopilotMessage(thread: any, message: any) {
 
   try {
     /**
-     * Optional.
-     *
-     * Tidak perlu menggagalkan proses jika typing
-     * indicator tidak tersedia / gagal.
+     * ========================================================
+     * TYPING INDICATOR
+     * ========================================================
      */
     try {
-      if (typeof thread.startTyping === "function") {
+      if (typeof thread?.startTyping === "function") {
         await thread.startTyping();
       }
     } catch (typingError) {
-      console.warn("[COPILOT TYPING INDICATOR FAILED]", typingError);
+      console.warn("[COPILOT TYPING INDICATOR FAILED]", {
+        threadId,
+
+        typingError,
+      });
     }
 
     /**
-     * thread.id menjadi identity utama conversation.
+     * ========================================================
+     * CONVERSATION IDENTITY
+     * ========================================================
      *
-     * Teams Thread
-     *      ↓
-     * Mastra conversation
-     *      ↓
-     * Mastra memory thread
+     * Satu Teams/Copilot thread
+     * menjadi satu Mastra conversation.
      */
     const conversationId = threadId;
 
@@ -164,8 +252,15 @@ async function handleCopilotMessage(thread: any, message: any) {
       resourceId,
 
       incomingMessageId,
+
+      textLength: text.length,
     });
 
+    /**
+     * ========================================================
+     * RUN MASTRA AGENT
+     * ========================================================
+     */
     const result = await runAgent({
       agentId: "sales",
 
@@ -190,10 +285,7 @@ async function handleCopilotMessage(thread: any, message: any) {
           userId: resourceId,
 
           /**
-           * Aman walaupun undefined.
-           *
-           * Ini hanya metadata untuk internal context,
-           * bukan Microsoft activity ID.
+           * Internal metadata saja.
            */
           messageId: incomingMessageId ?? undefined,
         },
@@ -217,7 +309,9 @@ async function handleCopilotMessage(thread: any, message: any) {
     });
 
     /**
-     * Kirim jawaban kembali ke Teams.
+     * ========================================================
+     * SEND RESPONSE
+     * ========================================================
      */
     const sent = await thread.post(answer);
 
@@ -273,21 +367,20 @@ async function handleCopilotMessage(thread: any, message: any) {
 
 /**
  * ============================================================
- * DIRECT MESSAGE / PERSONAL CHAT
+ * 1. DIRECT MESSAGE
  * ============================================================
  *
- * Cocok untuk:
+ * Routing priority paling tinggi di Chat SDK.
+ *
+ * Contoh:
  *
  * User
  *   ↓
- * Teams
+ * Teams App
  *   ↓
- * Apps
+ * Personal Chat
  *   ↓
  * EON AI
- *
- * Kalau versi Chat SDK kamu support onDirectMessage,
- * gunakan handler ini.
  */
 if (typeof (copilotBot as any).onDirectMessage === "function") {
   (copilotBot as any).onDirectMessage(async (thread: any, message: any) => {
@@ -295,6 +388,8 @@ if (typeof (copilotBot as any).onDirectMessage === "function") {
       threadId: thread?.id ?? null,
 
       messageId: message?.id ?? null,
+
+      isMention: message?.isMention ?? null,
     });
 
     await handleCopilotMessage(thread, message);
@@ -303,52 +398,40 @@ if (typeof (copilotBot as any).onDirectMessage === "function") {
 
 /**
  * ============================================================
- * FIRST MENTION
+ * 2. FIRST MENTION
  * ============================================================
  *
- * Misalnya:
+ * Contoh:
  *
- * @EON AI berapa stok product XXX?
+ * @EON AI berapa stok EONWASH 500?
  *
- * Pada message pertama, kita subscribe ke thread supaya
- * follow-up berikutnya bisa diterima.
+ * Setelah mention pertama:
+ *
+ * thread.subscribe()
+ *
+ * sehingga follow-up berikutnya masuk
+ * onSubscribedMessage.
  */
 copilotBot.onNewMention(async (thread: any, message: any) => {
   console.log("[COPILOT NEW MENTION]", {
     threadId: thread?.id ?? null,
 
     messageId: message?.id ?? null,
+
+    isMention: message?.isMention ?? null,
   });
 
-  /**
-   * Subscribe dilakukan terpisah supaya kalau gagal,
-   * first message tetap kita proses.
-   */
-  try {
-    if (typeof thread.subscribe === "function") {
-      await thread.subscribe();
-
-      console.log("[COPILOT THREAD SUBSCRIBED]", {
-        threadId: thread?.id ?? null,
-      });
-    }
-  } catch (error) {
-    console.warn("[COPILOT THREAD SUBSCRIBE FAILED]", {
-      threadId: thread?.id ?? null,
-
-      error,
-    });
-  }
+  await subscribeCopilotThread(thread, "new-mention");
 
   await handleCopilotMessage(thread, message);
 });
 
 /**
  * ============================================================
- * FOLLOW-UP MESSAGE
+ * 3. SUBSCRIBED MESSAGE
  * ============================================================
  *
- * Message setelah thread berhasil subscribe.
+ * Follow-up setelah thread berhasil subscribe.
  */
 if (typeof (copilotBot as any).onSubscribedMessage === "function") {
   (copilotBot as any).onSubscribedMessage(async (thread: any, message: any) => {
@@ -356,8 +439,83 @@ if (typeof (copilotBot as any).onSubscribedMessage === "function") {
       threadId: thread?.id ?? null,
 
       messageId: message?.id ?? null,
+
+      isMention: message?.isMention ?? null,
     });
 
     await handleCopilotMessage(thread, message);
   });
+}
+
+/**
+ * ============================================================
+ * 4. FIRST MESSAGE FALLBACK
+ * ============================================================
+ *
+ * INI BAGIAN PENTING UNTUK COPILOT INSIDE TEAMS.
+ *
+ * Chat SDK routing:
+ *
+ * Direct Message
+ *      ↓
+ * onDirectMessage
+ *
+ * sudah subscribed
+ *      ↓
+ * onSubscribedMessage
+ *
+ * mention
+ *      ↓
+ * onNewMention
+ *
+ * BUKAN semua di atas
+ *      ↓
+ * onNewMessage
+ *
+ *
+ * Jadi handler ini tidak seharusnya menyebabkan
+ * duplicate processing.
+ *
+ * Ini menangkap kasus:
+ *
+ * Copilot Teams
+ *      ↓
+ * message masuk
+ *      ↓
+ * bukan dianggap DM
+ *      ↓
+ * bukan dianggap mention
+ *      ↓
+ * thread belum subscribed
+ *      ↓
+ * FALLBACK DI SINI
+ */
+if (typeof (copilotBot as any).onNewMessage === "function") {
+  (copilotBot as any).onNewMessage(
+    /[\s\S]+/,
+
+    async (thread: any, message: any) => {
+      console.log("[COPILOT NEW MESSAGE FALLBACK]", {
+        threadId: thread?.id ?? null,
+
+        messageId: message?.id ?? null,
+
+        isDM: thread?.isDM ?? null,
+
+        isMention: message?.isMention ?? null,
+
+        textLength: String(message?.text ?? "").length,
+      });
+
+      /**
+       * Karena ini first message pada
+       * unsubscribed thread,
+       * subscribe agar message berikutnya
+       * masuk ke onSubscribedMessage.
+       */
+      await subscribeCopilotThread(thread, "new-message-fallback");
+
+      await handleCopilotMessage(thread, message);
+    },
+  );
 }
