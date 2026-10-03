@@ -1,8 +1,4 @@
-export type LocationCoordinateSource =
-  | "FINOPS"
-  | "CRM"
-  | "GEOCODED"
-  | "NONE";
+export type LocationCoordinateSource = "FINOPS" | "CRM" | "GEOCODED" | "NONE";
 
 export type ResolvedLocation = {
   found: boolean;

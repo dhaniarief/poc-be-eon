@@ -1,19 +1,37 @@
-import { Chat } from "chat";
+import { randomUUID } from "node:crypto";
 
+import { Chat } from "chat";
+import { createPostgresState } from "@chat-adapter/state-pg";
 import { createTeamsAdapter } from "@chat-adapter/teams";
 
-import { createMemoryState } from "@chat-adapter/state-memory";
-
 import { env } from "../../config/env.js";
-
+import { runAgent } from "../../mastra/runtime/agent.runner.js";
+import { postgresPool } from "../database/postgres.js";
+import {
+  markCopilotCompleted,
+  markCopilotFailed,
+  markCopilotProcessing,
+  markCopilotRejected,
+  markCopilotStage,
+} from "./copilot-ingress.service.js";
 import { getTeamsToken } from "./teams-token.service.js";
 
-import { runAgent } from "../../mastra/runtime/agent.runner.js";
+const copilotState = createPostgresState({
+  client: postgresPool,
+  keyPrefix: "eon-copilot",
+});
 
 /**
  * ============================================================
  * COPILOT CHAT BOT
  * ============================================================
+ *
+ * Important production guarantees:
+ * - Chat SDK state is durable in PostgreSQL.
+ * - Overlapping messages are queued instead of silently dropped.
+ * - Long-running locks are renewed by Chat SDK 4.39+.
+ * - The HTTP webhook itself is acknowledged quickly by the middleware
+ *   through Chat SDK's waitUntil option.
  */
 export const copilotBot = new Chat({
   userName: "EON AI",
@@ -21,70 +39,61 @@ export const copilotBot = new Chat({
   adapters: {
     teams: createTeamsAdapter({
       appType: "SingleTenant",
-
       appId: env.TEAMS_APP_ID,
-
       appTenantId: env.TEAMS_APP_TENANT_ID,
-
       userName: "EON AI",
-
       token: getTeamsToken,
     }),
   },
 
-  /**
-   * NOTE:
-   *
-   * Untuk sekarang tetap menggunakan memory state.
-   *
-   * Nanti untuk production sebaiknya diganti PostgreSQL
-   * supaya subscription thread tidak hilang saat:
-   *
-   * - server restart
-   * - PM2 restart
-   * - deployment
-   * - multiple instance
-   */
-  state: createMemoryState(),
+  state: copilotState,
 
-  logger: "debug",
+  concurrency: {
+    strategy: "queue",
+    maxQueueSize: env.COPILOT_QUEUE_MAX_SIZE,
+    onQueueFull: "drop-oldest",
+    queueEntryTtlMs: env.COPILOT_QUEUE_TTL_MS,
+    maxLockLifetimeMs: env.COPILOT_MAX_LOCK_LIFETIME_MS,
+  },
+
+  logger: env.NODE_ENV === "production" ? "info" : "debug",
 });
 
-/**
- * ============================================================
- * SUBSCRIBE THREAD
- * ============================================================
- *
- * Helper untuk first mention / fallback message.
- */
+type MessageContextLike = {
+  skipped?: any[];
+  totalSinceLastHandler?: number;
+};
+
+function buildCombinedText(message: any, context?: MessageContextLike): string {
+  const allMessages = [...(context?.skipped ?? []), message].filter(Boolean);
+
+  return allMessages
+    .map((item) => String(item?.text ?? "").trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
 async function subscribeCopilotThread(thread: any, source: string) {
   const threadId = thread?.id ?? null;
 
   if (typeof thread?.subscribe !== "function") {
     console.warn("[COPILOT SUBSCRIBE NOT AVAILABLE]", {
       source,
-
       threadId,
     });
-
     return;
   }
 
   try {
-    /**
-     * Kalau API isSubscribed tersedia,
-     * jangan subscribe ulang.
-     */
     if (typeof thread?.isSubscribed === "function") {
       const subscribed = await thread.isSubscribed();
 
       if (subscribed) {
         console.log("[COPILOT THREAD ALREADY SUBSCRIBED]", {
           source,
-
           threadId,
         });
-
         return;
       }
     }
@@ -93,122 +102,132 @@ async function subscribeCopilotThread(thread: any, source: string) {
 
     console.log("[COPILOT THREAD SUBSCRIBED]", {
       source,
-
       threadId,
     });
   } catch (error) {
-    /**
-     * Subscription tidak boleh menggagalkan
-     * pemrosesan first message.
-     */
+    // Subscription is useful, but must not make the first message fail.
     console.warn("[COPILOT THREAD SUBSCRIBE FAILED]", {
       source,
-
       threadId,
-
       error,
     });
   }
+}
+
+async function sendTextAndRequireId(thread: any, text: string) {
+  const sent = await thread.post(text);
+  const sentMessageId = sent?.id ? String(sent.id) : "";
+
+  if (!sentMessageId) {
+    throw new Error(
+      "Teams/Copilot outbound message did not return a message ID",
+    );
+  }
+
+  return sent;
 }
 
 /**
  * ============================================================
  * MAIN MESSAGE HANDLER
  * ============================================================
- *
- * Semua message akhirnya masuk ke function ini.
- *
- * Digunakan oleh:
- *
- * - Direct Message
- * - First Mention
- * - Subscribed Message
- * - First Message Fallback
  */
-async function handleCopilotMessage(thread: any, message: any) {
+async function handleCopilotMessage(
+  thread: any,
+  message: any,
+  messageContext?: MessageContextLike,
+) {
   const startedAt = Date.now();
+  const threadId = thread?.id ? String(thread.id) : null;
+  const incomingMessageId = message?.id ? String(message.id) : null;
+  const requestId = incomingMessageId || `copilot-${randomUUID()}`;
+  const skippedCount = messageContext?.skipped?.length ?? 0;
+  const text = buildCombinedText(message, messageContext);
+  const resourceId = String(
+    message?.author?.userId ?? message?.author?.id ?? "copilot-user",
+  );
 
-  const threadId = thread?.id ?? null;
-
-  const incomingMessageId = message?.id ?? null;
-
-  const text = String(message?.text ?? "").trim();
-
-  const resourceId =
-    message?.author?.userId ?? message?.author?.id ?? "copilot-user";
+  let stage = "received";
 
   console.log("[COPILOT MESSAGE RECEIVED]", {
+    requestId,
     threadId,
-
     channelId: thread?.channelId ?? null,
-
     isDM: thread?.isDM ?? null,
-
     messageId: incomingMessageId,
-
+    skippedCount,
+    totalSinceLastHandler:
+      messageContext?.totalSinceLastHandler ?? skippedCount + 1,
     isMention: message?.isMention ?? null,
-
     userId: resourceId,
-
     userName: message?.author?.userName ?? message?.author?.fullName ?? null,
-
     textLength: text.length,
-
     preview: text.slice(0, 200),
   });
 
-  /**
-   * ==========================================================
-   * VALIDATE THREAD
-   * ==========================================================
-   */
   if (!threadId) {
     console.error("[COPILOT INVALID THREAD]", {
+      requestId,
       hasThread: Boolean(thread),
-
       hasMessage: Boolean(message),
-
       messageId: incomingMessageId,
     });
-
     return;
   }
 
-  /**
-   * Message ID tidak wajib.
-   */
   if (!incomingMessageId) {
     console.warn("[COPILOT MESSAGE WITHOUT ID]", {
+      requestId,
       threadId,
-
       textLength: text.length,
     });
   }
 
-  /**
-   * ==========================================================
-   * EMPTY MESSAGE
-   * ==========================================================
-   */
+  await markCopilotProcessing({
+    conversationId: threadId,
+    activityId: incomingMessageId,
+    requestId,
+    stage,
+    skippedCount,
+  });
+
   if (!text) {
+    stage = "validation";
+
     try {
-      const sent = await thread.post("Maaf, pertanyaan tidak terbaca.");
+      const sent = await sendTextAndRequireId(
+        thread,
+        "Maaf, pertanyaan tidak terbaca.",
+      );
+
+      await markCopilotRejected({
+        conversationId: threadId,
+        activityId: incomingMessageId,
+        requestId,
+        reason: "Incoming message text is empty",
+        responseMessageId: sent.id,
+      });
 
       console.log("[COPILOT EMPTY RESPONSE SENT]", {
+        requestId,
         threadId,
-
         incomingMessageId,
-
-        sentMessageId: sent?.id ?? null,
-
+        sentMessageId: sent.id,
         durationMs: Date.now() - startedAt,
       });
     } catch (error) {
+      await markCopilotFailed({
+        conversationId: threadId,
+        activityId: incomingMessageId,
+        requestId,
+        stage,
+        error,
+      });
+
       console.error("[COPILOT EMPTY RESPONSE FAILED]", {
+        requestId,
         threadId,
-
         incomingMessageId,
-
         error,
       });
     }
@@ -217,76 +236,60 @@ async function handleCopilotMessage(thread: any, message: any) {
   }
 
   try {
-    /**
-     * ========================================================
-     * TYPING INDICATOR
-     * ========================================================
-     */
+    stage = "typing";
+    await markCopilotStage({
+      conversationId: threadId,
+      activityId: incomingMessageId,
+      requestId,
+      stage,
+    });
+
     try {
       if (typeof thread?.startTyping === "function") {
         await thread.startTyping();
       }
     } catch (typingError) {
       console.warn("[COPILOT TYPING INDICATOR FAILED]", {
+        requestId,
         threadId,
-
         typingError,
       });
     }
 
-    /**
-     * ========================================================
-     * CONVERSATION IDENTITY
-     * ========================================================
-     *
-     * Satu Teams/Copilot thread
-     * menjadi satu Mastra conversation.
-     */
     const conversationId = threadId;
 
-    console.log("[COPILOT AGENT START]", {
+    stage = "agent";
+    await markCopilotStage({
       conversationId,
+      activityId: incomingMessageId,
+      requestId,
+      stage,
+    });
 
+    console.log("[COPILOT AGENT START]", {
+      requestId,
+      conversationId,
       threadId,
-
       resourceId,
-
       incomingMessageId,
-
+      skippedCount,
       textLength: text.length,
     });
 
-    /**
-     * ========================================================
-     * RUN MASTRA AGENT
-     * ========================================================
-     */
     const result = await runAgent({
       agentId: "sales",
-
       modelMode: "cloud",
-
       message: text,
-
       conversationId,
-
       threadId,
-
       resourceId,
-
+      requestId,
       context: {
         channel: {
           platform: "teams-copilot",
-
           channelId: thread?.channelId ?? "copilot",
-
           threadId,
-
           userId: resourceId,
-
-          /**
-           * Internal metadata saja.
-           */
           messageId: incomingMessageId ?? undefined,
         },
       },
@@ -299,66 +302,74 @@ async function handleCopilotMessage(thread: any, message: any) {
     }
 
     console.log("[COPILOT AGENT RESPONSE]", {
+      requestId,
       conversationId,
-
       textLength: answer.length,
-
       preview: answer.slice(0, 200),
-
       toolsUsed: result?.toolsUsed?.map((item: any) => item?.tool) ?? [],
     });
 
-    /**
-     * ========================================================
-     * SEND RESPONSE
-     * ========================================================
-     */
-    const sent = await thread.post(answer);
+    stage = "send-response";
+    await markCopilotStage({
+      conversationId,
+      activityId: incomingMessageId,
+      requestId,
+      stage,
+    });
+
+    const sent = await sendTextAndRequireId(thread, answer);
+
+    await markCopilotCompleted({
+      conversationId,
+      activityId: incomingMessageId,
+      requestId,
+      responseMessageId: sent.id,
+    });
 
     console.log("[COPILOT RESPONSE SENT]", {
+      requestId,
       conversationId,
-
       threadId,
-
       incomingMessageId,
-
-      sentMessageExists: Boolean(sent),
-
-      sentMessageId: sent?.id ?? null,
-
+      sentMessageId: sent.id,
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
+    await markCopilotFailed({
+      conversationId: threadId,
+      activityId: incomingMessageId,
+      requestId,
+      stage,
+      error,
+    });
+
     console.error("[COPILOT ERROR]", {
+      requestId,
+      stage,
       threadId,
-
       incomingMessageId,
-
       durationMs: Date.now() - startedAt,
-
       error,
     });
 
     try {
-      const sent = await thread.post(
-        "Maaf, terjadi kesalahan saat memproses permintaan.",
+      const sent = await sendTextAndRequireId(
+        thread,
+        "Maaf, terjadi kesalahan saat memproses permintaan. Silakan coba lagi.",
       );
 
       console.log("[COPILOT ERROR RESPONSE SENT]", {
+        requestId,
         threadId,
-
         incomingMessageId,
-
-        sentMessageId: sent?.id ?? null,
-
+        sentMessageId: sent.id,
         durationMs: Date.now() - startedAt,
       });
     } catch (sendError) {
       console.error("[COPILOT ERROR RESPONSE FAILED]", {
+        requestId,
         threadId,
-
         incomingMessageId,
-
         sendError,
       });
     }
@@ -366,156 +377,82 @@ async function handleCopilotMessage(thread: any, message: any) {
 }
 
 /**
- * ============================================================
- * 1. DIRECT MESSAGE
- * ============================================================
- *
- * Routing priority paling tinggi di Chat SDK.
- *
- * Contoh:
- *
- * User
- *   ↓
- * Teams App
- *   ↓
- * Personal Chat
- *   ↓
- * EON AI
+ * 1. Direct message
  */
 if (typeof (copilotBot as any).onDirectMessage === "function") {
-  (copilotBot as any).onDirectMessage(async (thread: any, message: any) => {
-    console.log("[COPILOT DIRECT MESSAGE]", {
-      threadId: thread?.id ?? null,
+  (copilotBot as any).onDirectMessage(
+    async (
+      thread: any,
+      message: any,
+      _channel: any,
+      context?: MessageContextLike,
+    ) => {
+      console.log("[COPILOT DIRECT MESSAGE]", {
+        threadId: thread?.id ?? null,
+        messageId: message?.id ?? null,
+        isMention: message?.isMention ?? null,
+        skippedCount: context?.skipped?.length ?? 0,
+      });
 
-      messageId: message?.id ?? null,
-
-      isMention: message?.isMention ?? null,
-    });
-
-    await handleCopilotMessage(thread, message);
-  });
+      await handleCopilotMessage(thread, message, context);
+    },
+  );
 }
 
 /**
- * ============================================================
- * 2. FIRST MENTION
- * ============================================================
- *
- * Contoh:
- *
- * @EON AI berapa stok EONWASH 500?
- *
- * Setelah mention pertama:
- *
- * thread.subscribe()
- *
- * sehingga follow-up berikutnya masuk
- * onSubscribedMessage.
+ * 2. First mention
  */
-copilotBot.onNewMention(async (thread: any, message: any) => {
-  console.log("[COPILOT NEW MENTION]", {
-    threadId: thread?.id ?? null,
+copilotBot.onNewMention(
+  async (thread: any, message: any, context: MessageContextLike) => {
+    console.log("[COPILOT NEW MENTION]", {
+      threadId: thread?.id ?? null,
+      messageId: message?.id ?? null,
+      isMention: message?.isMention ?? null,
+      skippedCount: context?.skipped?.length ?? 0,
+    });
 
-    messageId: message?.id ?? null,
-
-    isMention: message?.isMention ?? null,
-  });
-
-  await subscribeCopilotThread(thread, "new-mention");
-
-  await handleCopilotMessage(thread, message);
-});
+    await subscribeCopilotThread(thread, "new-mention");
+    await handleCopilotMessage(thread, message, context);
+  },
+);
 
 /**
- * ============================================================
- * 3. SUBSCRIBED MESSAGE
- * ============================================================
- *
- * Follow-up setelah thread berhasil subscribe.
+ * 3. Follow-up in a subscribed thread
  */
 if (typeof (copilotBot as any).onSubscribedMessage === "function") {
-  (copilotBot as any).onSubscribedMessage(async (thread: any, message: any) => {
-    console.log("[COPILOT SUBSCRIBED MESSAGE]", {
-      threadId: thread?.id ?? null,
+  (copilotBot as any).onSubscribedMessage(
+    async (thread: any, message: any, context: MessageContextLike) => {
+      console.log("[COPILOT SUBSCRIBED MESSAGE]", {
+        threadId: thread?.id ?? null,
+        messageId: message?.id ?? null,
+        isMention: message?.isMention ?? null,
+        skippedCount: context?.skipped?.length ?? 0,
+      });
 
-      messageId: message?.id ?? null,
-
-      isMention: message?.isMention ?? null,
-    });
-
-    await handleCopilotMessage(thread, message);
-  });
+      await handleCopilotMessage(thread, message, context);
+    },
+  );
 }
 
 /**
- * ============================================================
- * 4. FIRST MESSAGE FALLBACK
- * ============================================================
- *
- * INI BAGIAN PENTING UNTUK COPILOT INSIDE TEAMS.
- *
- * Chat SDK routing:
- *
- * Direct Message
- *      ↓
- * onDirectMessage
- *
- * sudah subscribed
- *      ↓
- * onSubscribedMessage
- *
- * mention
- *      ↓
- * onNewMention
- *
- * BUKAN semua di atas
- *      ↓
- * onNewMessage
- *
- *
- * Jadi handler ini tidak seharusnya menyebabkan
- * duplicate processing.
- *
- * Ini menangkap kasus:
- *
- * Copilot Teams
- *      ↓
- * message masuk
- *      ↓
- * bukan dianggap DM
- *      ↓
- * bukan dianggap mention
- *      ↓
- * thread belum subscribed
- *      ↓
- * FALLBACK DI SINI
+ * 4. First-message fallback for Copilot surfaces that are neither detected as
+ * a direct message nor a mention yet.
  */
 if (typeof (copilotBot as any).onNewMessage === "function") {
   (copilotBot as any).onNewMessage(
     /[\s\S]+/,
-
-    async (thread: any, message: any) => {
+    async (thread: any, message: any, context: MessageContextLike) => {
       console.log("[COPILOT NEW MESSAGE FALLBACK]", {
         threadId: thread?.id ?? null,
-
         messageId: message?.id ?? null,
-
         isDM: thread?.isDM ?? null,
-
         isMention: message?.isMention ?? null,
-
+        skippedCount: context?.skipped?.length ?? 0,
         textLength: String(message?.text ?? "").length,
       });
 
-      /**
-       * Karena ini first message pada
-       * unsubscribed thread,
-       * subscribe agar message berikutnya
-       * masuk ke onSubscribedMessage.
-       */
       await subscribeCopilotThread(thread, "new-message-fallback");
-
-      await handleCopilotMessage(thread, message);
+      await handleCopilotMessage(thread, message, context);
     },
   );
 }

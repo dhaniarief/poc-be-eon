@@ -5,12 +5,19 @@ import type {
 } from "express";
 
 import { copilotBot } from "../services/teams/copilot.bot.js";
+import { registerCopilotBackgroundTask } from "../services/teams/copilot-background-tasks.service.js";
+import {
+  markCopilotFailed,
+  markCopilotWebhookResponse,
+  recordCopilotIngressReceived,
+} from "../services/teams/copilot-ingress.service.js";
 
 type TeamsActivity = {
   type?: string;
   text?: string;
-
   id?: string;
+  channelId?: string;
+  serviceUrl?: string;
 
   from?: {
     id?: string;
@@ -25,7 +32,6 @@ type TeamsActivity = {
   entities?: Array<{
     type?: string;
     id?: string;
-
     mentioned?: {
       id?: string;
       name?: string;
@@ -40,35 +46,13 @@ type TeamsActivity = {
 
   channelData?: {
     productContext?: string;
-
     tenant?: {
       id?: string;
     };
   };
 };
 
-/**
- * ============================================================
- * DETECT MICROSOFT COPILOT ACTIVITY
- * ============================================================
- *
- * Jangan case-sensitive.
- *
- * Payload Microsoft dapat membawa:
- *
- * COPILOT
- * Copilot
- * copilot
- *
- * tergantung surface / client yang mengirim activity.
- */
 function isCopilotActivity(activity: TeamsActivity): boolean {
-  /**
-   * ----------------------------------------------------------
-   * CHECK #1
-   * channelData.productContext
-   * ----------------------------------------------------------
-   */
   const productContext = String(activity?.channelData?.productContext ?? "")
     .trim()
     .toUpperCase();
@@ -77,40 +61,18 @@ function isCopilotActivity(activity: TeamsActivity): boolean {
     return true;
   }
 
-  /**
-   * ----------------------------------------------------------
-   * CHECK #2
-   * ProductInfo entity
-   * ----------------------------------------------------------
-   */
-  const hasCopilotProductInfo = Boolean(
+  return Boolean(
     activity?.entities?.some((entity) => {
-      const entityType = String(entity?.type ?? "")
-        .trim()
-        .toLowerCase();
-
-      const entityId = String(entity?.id ?? "")
-        .trim()
-        .toUpperCase();
+      const entityType = String(entity?.type ?? "").trim().toLowerCase();
+      const entityId = String(entity?.id ?? "").trim().toUpperCase();
 
       return entityType === "productinfo" && entityId === "COPILOT";
     }),
   );
-
-  if (hasCopilotProductInfo) {
-    return true;
-  }
-
-  return false;
 }
 
 /**
- * ============================================================
- * EXPRESS REQUEST -> WEB REQUEST
- * ============================================================
- *
- * Chat SDK menggunakan Web API Request,
- * bukan Express Request.
+ * Convert Express Request into the Web Request expected by Chat SDK.
  */
 function createWebRequest(req: ExpressRequest): Request {
   const headers = new Headers();
@@ -120,12 +82,6 @@ function createWebRequest(req: ExpressRequest): Request {
       continue;
     }
 
-    /**
-     * Jangan copy content-length.
-     *
-     * Body dibuat ulang menggunakan JSON.stringify(req.body),
-     * sehingga panjang body mungkin berbeda.
-     */
     if (key.toLowerCase() === "content-length") {
       continue;
     }
@@ -141,32 +97,24 @@ function createWebRequest(req: ExpressRequest): Request {
 
   headers.set("content-type", "application/json");
 
-  /**
-   * Support reverse proxy / dev tunnel / nginx.
-   */
   const forwardedProto = req.headers["x-forwarded-proto"];
-
   const protocol =
     typeof forwardedProto === "string"
       ? forwardedProto.split(",")[0]?.trim() || req.protocol
       : req.protocol;
 
   const forwardedHost = req.headers["x-forwarded-host"];
-
   const host =
     typeof forwardedHost === "string"
       ? forwardedHost.split(",")[0]?.trim()
       : req.get("host");
 
   const safeHost = host || "localhost";
-
   const url = `${protocol}://${safeHost}${req.originalUrl}`;
 
   return new Request(url, {
     method: req.method || "POST",
-
     headers,
-
     body: JSON.stringify(req.body ?? {}),
   });
 }
@@ -175,6 +123,10 @@ function createWebRequest(req: ExpressRequest): Request {
  * ============================================================
  * COPILOT MIDDLEWARE
  * ============================================================
+ *
+ * Critical detail: do NOT await the AI agent inside the inbound Bot Framework
+ * HTTP request. Chat SDK's waitUntil registers the long-running handler and
+ * allows the adapter to acknowledge the webhook immediately.
  */
 export async function copilotTeamsMiddleware(
   req: ExpressRequest,
@@ -183,161 +135,115 @@ export async function copilotTeamsMiddleware(
 ) {
   const activity = (req.body ?? {}) as TeamsActivity;
 
-  /**
-   * ----------------------------------------------------------
-   * DEBUG INCOMING ACTIVITY
-   * ----------------------------------------------------------
-   *
-   * Log ini penting untuk mengetahui perbedaan payload antara:
-   *
-   * 1. Teams direct chat
-   * 2. Copilot web
-   * 3. Copilot inside Teams
-   */
   console.log("[TEAMS ACTIVITY CHECK]", {
     type: activity?.type ?? null,
-
     activityId: activity?.id ?? null,
-
+    channelId: activity?.channelId ?? null,
     conversationId: activity?.conversation?.id ?? null,
-
     conversationType: activity?.conversation?.conversationType ?? null,
-
     isGroup: activity?.conversation?.isGroup ?? null,
-
     productContext: activity?.channelData?.productContext ?? null,
-
     entityTypes:
       activity?.entities?.map((entity) => ({
         type: entity?.type ?? null,
         id: entity?.id ?? null,
       })) ?? [],
-
     fromId: activity?.from?.id ?? null,
-
     recipientId: activity?.recipient?.id ?? null,
-
     textLength: String(activity?.text ?? "").length,
   });
 
-  /**
-   * ==========================================================
-   * BUKAN COPILOT
-   * ==========================================================
-   *
-   * Teams biasa tetap diteruskan ke middleware/router
-   * berikutnya.
-   */
   if (!isCopilotActivity(activity)) {
     console.log("[NOT COPILOT - PASS THROUGH]", {
       type: activity?.type ?? null,
-
       activityId: activity?.id ?? null,
-
+      channelId: activity?.channelId ?? null,
       conversationId: activity?.conversation?.id ?? null,
-
       productContext: activity?.channelData?.productContext ?? null,
     });
 
     return next();
   }
 
-  /**
-   * ==========================================================
-   * COPILOT DETECTED
-   * ==========================================================
-   */
+  const activityId = activity?.id ?? null;
+  const conversationId = activity?.conversation?.id ?? null;
+
   console.log("[COPILOT INTERCEPTED]", {
     type: activity?.type ?? null,
-
-    activityId: activity?.id ?? null,
-
-    text: activity?.text ?? null,
-
-    conversationId: activity?.conversation?.id ?? null,
-
+    activityId,
+    channelId: activity?.channelId ?? null,
+    conversationId,
     conversationType: activity?.conversation?.conversationType ?? null,
-
     isGroup: activity?.conversation?.isGroup ?? null,
-
     productContext: activity?.channelData?.productContext ?? null,
-
     tenantId: activity?.channelData?.tenant?.id ?? null,
+    textLength: String(activity?.text ?? "").length,
+  });
+
+  // Persist the ingress independently. A diagnostics write must never hold the
+  // Bot Framework HTTP request open.
+  registerCopilotBackgroundTask(recordCopilotIngressReceived(activity), {
+    activityId,
+    conversationId,
   });
 
   try {
-    /**
-     * Convert Express Request menjadi standard Request
-     * untuk Chat SDK.
-     */
     const webRequest = createWebRequest(req);
 
     console.log("[COPILOT CHAT SDK START]", {
-      activityId: activity?.id ?? null,
-
-      conversationId: activity?.conversation?.id ?? null,
-
+      activityId,
+      conversationId,
       type: activity?.type ?? null,
     });
 
-    /**
-     * ========================================================
-     * CHAT SDK WEBHOOK
-     * ========================================================
-     *
-     * Chat SDK akan menentukan handler:
-     *
-     * Direct Message
-     *      ↓
-     * onDirectMessage
-     *
-     * Subscribed Thread
-     *      ↓
-     * onSubscribedMessage
-     *
-     * First Mention
-     *      ↓
-     * onNewMention
-     *
-     * Message biasa pada unsubscribed thread
-     *      ↓
-     * onNewMessage
-     */
-    const webResponse = await copilotBot.webhooks.teams(webRequest);
+    const webhookStartedAt = Date.now();
 
-    console.log("[COPILOT WEBHOOK RESPONSE]", {
-      activityId: activity?.id ?? null,
-
-      conversationId: activity?.conversation?.id ?? null,
-
-      status: webResponse.status,
+    const webResponse = await copilotBot.webhooks.teams(webRequest, {
+      waitUntil: (task: Promise<unknown>) => {
+        registerCopilotBackgroundTask(task, {
+          activityId,
+          conversationId,
+        });
+      },
     });
 
-    /**
-     * Copy HTTP status dari Chat SDK.
-     */
+    const body = await webResponse.text();
+
+    console.log("[COPILOT WEBHOOK RESPONSE]", {
+      activityId,
+      conversationId,
+      status: webResponse.status,
+      durationMs: Date.now() - webhookStartedAt,
+      responseBody:
+        webResponse.status >= 400 ? body.slice(0, 2000) : undefined,
+    });
+
+    registerCopilotBackgroundTask(
+      markCopilotWebhookResponse(
+        {
+          conversationId,
+          activityId,
+        },
+        webResponse.status,
+        webResponse.status >= 400 ? body : null,
+      ),
+      {
+        activityId,
+        conversationId,
+      },
+    );
+
     res.status(webResponse.status);
 
-    /**
-     * Copy response headers.
-     */
     webResponse.headers.forEach((value, key) => {
       const lowerKey = key.toLowerCase();
 
-      /**
-       * Biarkan Express menentukan sendiri.
-       */
       if (lowerKey === "content-length" || lowerKey === "transfer-encoding") {
         return;
       }
 
       res.setHeader(key, value);
     });
-
-    /**
-     * Copy response body.
-     */
-    const body = await webResponse.text();
 
     if (body) {
       return res.send(body);
@@ -350,22 +256,29 @@ export async function copilotTeamsMiddleware(
       error instanceof Error
         ? {
             message: error.message,
-
             name: error.name,
-
             stack: error.stack,
-
-            activityId: activity?.id ?? null,
-
-            conversationId: activity?.conversation?.id ?? null,
+            activityId,
+            conversationId,
           }
         : {
             error,
-
-            activityId: activity?.id ?? null,
-
-            conversationId: activity?.conversation?.id ?? null,
+            activityId,
+            conversationId,
           },
+    );
+
+    registerCopilotBackgroundTask(
+      markCopilotFailed({
+        conversationId,
+        activityId,
+        stage: "webhook",
+        error,
+      }),
+      {
+        activityId,
+        conversationId,
+      },
     );
 
     return res.status(500).json({

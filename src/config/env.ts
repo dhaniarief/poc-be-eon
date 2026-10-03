@@ -106,9 +106,7 @@ const envSchema = z.object({
   // SHAREPOINT SOP / IK RAG
   // ==================================================
 
-  SHAREPOINT_SOP_HOSTNAME: z
-    .string()
-    .default("eonchemicals1.sharepoint.com"),
+  SHAREPOINT_SOP_HOSTNAME: z.string().default("eonchemicals1.sharepoint.com"),
 
   SHAREPOINT_SOP_SITE_PATH: z.string().default("/sites/MIS-SOPIK"),
 
@@ -116,9 +114,7 @@ const envSchema = z.object({
     .string()
     .default("2b9a5ffe-11d9-4f4c-af28-3ee548943605"),
 
-  RAG_SOURCE_KEY: z
-    .string()
-    .default("sharepoint:mis-sopik:sitepages"),
+  RAG_SOURCE_KEY: z.string().default("sharepoint:mis-sopik:sitepages"),
 
   RAG_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
 
@@ -146,15 +142,15 @@ const envSchema = z.object({
 
   RAG_SYNC_ON_START: booleanFromString.default(false),
 
-  RAG_SYNC_INTERVAL_MS: z.coerce
-    .number()
-    .int()
-    .min(60_000)
-    .default(300_000),
+  RAG_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
 
   TEAMS_APP_ID: z.string().min(1),
   TEAMS_APP_PASSWORD: z.string().min(1),
   TEAMS_APP_TENANT_ID: z.string().min(1),
+
+  CRM_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
+
+  SALES_QUERY_TIMEOUT_MS: z.coerce.number().int().positive().default(60000),
 });
 
 const parsed = envSchema.safeParse(process.env);

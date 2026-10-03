@@ -17,7 +17,6 @@ export function buildAgentMetrics(input: {
   agentId: string;
   modelMode: ModelMode;
   conversationId: string;
-  opportunityId?: string;
   startedAt: number;
   finishReason?: string | null;
   synthesisFinishReason?: string | null;
@@ -37,7 +36,6 @@ export function buildAgentMetrics(input: {
     agentId: input.agentId,
     modelMode: input.modelMode,
     conversationId: input.conversationId,
-    opportunityId: input.opportunityId ?? null,
     status: "success",
     finishReason: input.finishReason ?? null,
     synthesisFinishReason: input.synthesisFinishReason ?? null,

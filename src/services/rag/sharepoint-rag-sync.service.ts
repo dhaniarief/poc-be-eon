@@ -180,8 +180,8 @@ async function indexPage(page: SopIkPage) {
 
   const canReuseExistingChunks =
     existing?.indexedContentHash === contentHash &&
-    existing.embeddingModel === env.RAG_EMBEDDING_MODEL &&
-    existing.isSearchable;
+    existing?.embeddingModel === env.RAG_EMBEDDING_MODEL &&
+    existing?.isSearchable === true;
 
   if (canReuseExistingChunks) {
     return { status: "unchanged" as const };

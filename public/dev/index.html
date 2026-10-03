@@ -1352,7 +1352,7 @@
             <label for="opportunity-id">
               Opportunity ID
 
-              <span class="label-hint"> active CRM record </span>
+              <span class="label-hint"> optional explicit context </span>
             </label>
 
             <input
@@ -1363,8 +1363,7 @@
             />
 
             <div class="helper">
-              Tidak ada ID yang diisi otomatis. Gunakan Opportunity yang memang
-              sedang ingin diuji.
+              Opsional. Jika diisi, ID dikirim sebagai entity context; bukan active Opportunity yang dipersist.
             </div>
           </div>
 
@@ -1722,7 +1721,9 @@ Jika web search tidak tersedia atau tidak menemukan informasi yang dapat diverif
         const context = {};
 
         if (opportunityId) {
-          context.opportunityId = opportunityId;
+          context.entities = {
+            opportunity: { id: opportunityId },
+          };
         }
 
         return {
@@ -1750,23 +1751,8 @@ Jika web search tidak tersedia atau tidak menemukan informasi yang dapat diverif
       function validateRequest() {
         const prompt = document.getElementById("prompt").value.trim();
 
-        const opportunityId = document
-          .getElementById("opportunity-id")
-          .value.trim();
-
         if (!prompt) {
           throw new Error("Prompt belum diisi.");
-        }
-
-        /*
-         * Saat ini Sales Agent kamu
-         * menggunakan active Opportunity.
-         *
-         * Jadi untuk playground ini
-         * kita validasi ID terlebih dahulu.
-         */
-        if (!opportunityId) {
-          throw new Error("Opportunity ID belum diisi.");
         }
       }
 
@@ -1960,10 +1946,27 @@ Jika web search tidak tersedia atau tidak menemukan informasi yang dapat diverif
         getToolNames(tools).forEach((tool) => {
           const normalized = String(tool ?? "").toLowerCase();
 
-          if (normalized.includes("common.get_opportunity_intelligence")) {
+          if (normalized.includes("sales.get_opportunity")) {
             sources.add("crm");
             sources.add("finops");
             sources.add("sharepoint");
+            return;
+          }
+
+          if (normalized.includes("sales.query") || normalized.includes("sales.check_stock")) {
+            sources.add("crm");
+            sources.add("finops");
+            return;
+          }
+
+          if (normalized.includes("sales.get_msds")) {
+            sources.add("crm");
+            sources.add("sharepoint");
+            return;
+          }
+
+          if (normalized.includes("sales.resolve_entity")) {
+            sources.add("crm");
             return;
           }
 

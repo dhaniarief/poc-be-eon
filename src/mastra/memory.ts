@@ -7,8 +7,8 @@ import { mastraPostgresStore } from "./storage.js";
  *
  * resourceId = user/account scope
  * threadId   = individual conversation
- * opportunityId remains RequestContext and is NOT treated as source-of-truth
- * memory for operational facts such as current stock or Sales Order state.
+ * Memory is for conversational continuity only. Business entities are resolved
+ * to live CRM/FinOps data on relevant turns; memory is never operational truth.
  */
 export const agentMemory = mastraPostgresStore
   ? new Memory({

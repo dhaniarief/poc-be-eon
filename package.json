@@ -1,6 +1,6 @@
 {
   "name": "be-ai-eon",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "EON AI Backend",
   "main": "dist/server.js",
   "type": "module",
@@ -36,8 +36,7 @@
     "@ai-sdk/openai": "4.0.21",
     "@ai-sdk/openai-compatible": "3.0.15",
     "@azure/msal-node": "^6.0.1",
-    "@chat-adapter/state-memory": "^4.41.0",
-    "@chat-adapter/teams": "^4.41.0",
+    "@chat-adapter/teams": "4.40.0",
     "@mastra/core": "^1.67.0",
     "@mastra/duckdb": "^1.8.0",
     "@mastra/editor": "^0.15.0",
@@ -46,8 +45,7 @@
     "@mastra/memory": "^1.30.0",
     "@mastra/observability": "^1.17.6",
     "@mastra/pg": "^1.25.0",
-    "@microsoft/teams.apps": "^2.1.0",
-    "chat": "^4.41.0",
+    "chat": "4.40.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jose": "^6.2.12",
@@ -58,5 +56,8 @@
   },
   "engines": {
     "node": ">=22.13.0"
+  },
+  "overrides": {
+    "chat": "4.40.0"
   }
 }

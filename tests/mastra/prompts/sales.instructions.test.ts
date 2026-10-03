@@ -1,15 +1,45 @@
 import { describe, expect, it } from "vitest";
+
 import { salesAgentInstructions } from "../../../src/mastra/prompts/sales.instructions.js";
 
 describe("salesAgentInstructions", () => {
-  it("prevents redundant fine-grained internal calls after broad intelligence succeeds", () => {
-    expect(salesAgentInstructions).toContain(
-      "After getOpportunityIntelligence succeeds, do not repeat the same internal facts with overview, products, stage, stock, Sales Order, delivery, invoice, or MSDS tools unless the user explicitly asks for detail that is absent from the compact snapshot.",
-    );
+  it("uses IDs after entity resolution and owner id for salesman Opportunity queries", () => {
+    expect(salesAgentInstructions).toContain("systemuserid");
+
+    expect(salesAgentInstructions).toContain("_ownerid_value = systemuserid");
+
+    expect(salesAgentInstructions).toContain("accountid");
+
+    expect(salesAgentInstructions).toContain("productid");
   });
 
-  it("keeps route and web research outside the internal broad snapshot", () => {
-    expect(salesAgentInstructions).toContain("Do not call route/location tools unless route/location is actually requested.");
-    expect(salesAgentInstructions).toContain("web search for the public sections");
+  it("preserves EON stock and transaction mapping rules", () => {
+    expect(salesAgentInstructions).toContain("CRM Product Name");
+
+    expect(salesAgentInstructions).toContain("CRM UOM Name");
+
+    expect(salesAgentInstructions).toContain("ProductsV2.ProductNumber");
+
+    expect(salesAgentInstructions).toContain("ReleasedProductsV2.ItemNumber");
+
+    expect(salesAgentInstructions).toContain("InventorySitesOnHandV2");
+
+    expect(salesAgentInstructions).toContain("new_noopp*");
+
+    expect(salesAgentInstructions).toContain('Category = "MSDS for Email"');
+  });
+
+  it("documents partial revenue and count rules", () => {
+    expect(salesAgentInstructions).toContain("CRM Opportunity actualvalue");
+
+    expect(salesAgentInstructions).toContain(
+      "SUM(new_opportunityhistorypartials.new_extendedamount)",
+    );
+
+    expect(salesAgentInstructions).toContain(
+      "DISTINCT new_opportunityhistorypartialid",
+    );
+
+    expect(salesAgentInstructions).toContain("new_actualclosedatepartial");
   });
 });

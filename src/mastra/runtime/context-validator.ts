@@ -1,49 +1,33 @@
 import { z } from "zod";
-
 import { AppError } from "../../errors/app.error.js";
-
-export type ChannelContext = {
-  platform: string;
-
-  channelId: string;
-
-  threadId?: string;
-
-  userId: string;
-
-  messageId?: string;
-};
+import {
+  entityContextRefSchema,
+  teamsChannelContextSchema,
+  type ChannelRequestContext,
+  type EntityContext,
+} from "./request-context.js";
 
 export type AgentContext = {
-  opportunityId?: string;
-
-  channel?: ChannelContext;
+  channel?: ChannelRequestContext;
+  entities?: EntityContext;
 };
 
-const opportunityIdSchema = z.string().uuid();
+const agentContextSchema = z.object({
+  channel: teamsChannelContextSchema.optional(),
+  entities: z.record(z.string(), entityContextRefSchema).optional(),
+});
 
-export function validateAgentContext(agentId: string, context?: AgentContext) {
-  if (agentId !== "sales") {
-    return context ?? {};
-  }
+export function validateAgentContext(_agentId: string, context?: AgentContext) {
+  if (!context) return {};
 
-  if (!context?.opportunityId) {
-    return context ?? {};
-  }
-
-  const parsed = opportunityIdSchema.safeParse(context.opportunityId);
-
+  const parsed = agentContextSchema.safeParse(context);
   if (!parsed.success) {
     throw new AppError(
-      "Sales opportunityId must be a valid UUID",
+      "Invalid agent context",
       400,
       "VALIDATION_ERROR",
     );
   }
 
-  return {
-    ...context,
-
-    opportunityId: parsed.data,
-  };
+  return parsed.data;
 }

@@ -12,10 +12,7 @@ export async function chatAgent(req: Request, res: Response) {
   } = req.body;
 
   const agentId = req.params.agentId;
-
-  if (Array.isArray(agentId)) {
-    throw new Error("Invalid agent id");
-  }
+  if (Array.isArray(agentId)) throw new Error("Invalid agent id");
 
   const conversation = resolveConversationIdentity({
     userId: req.user?.userId,
@@ -39,7 +36,6 @@ export async function chatAgent(req: Request, res: Response) {
     agentId,
     modelMode,
     userId: req.user?.userId,
-    opportunityId: context?.opportunityId,
     requestId: req.requestId,
     conversationId: conversation.conversationId,
     toolsUsed: result.toolsUsed,

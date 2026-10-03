@@ -15,48 +15,7 @@ CREATE SCHEMA IF NOT EXISTS mastra_editor;
 
 
 -- =========================================================
--- 2. TEAMS CONVERSATION CONTEXT
--- =========================================================
-
-CREATE TABLE IF NOT EXISTS eon_ai.teams_conversation_context (
-    id BIGSERIAL PRIMARY KEY,
-
-    tenant_id TEXT NOT NULL,
-    platform TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    thread_id TEXT NOT NULL DEFAULT '',
-    user_id TEXT NOT NULL,
-
-    opportunity_id TEXT NOT NULL,
-    opportunity_no TEXT NOT NULL,
-
-    last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_teams_conversation_context
-        UNIQUE (
-            tenant_id,
-            platform,
-            channel_id,
-            thread_id,
-            user_id
-        )
-);
-
-
-CREATE INDEX IF NOT EXISTS ix_teams_context_opportunity
-ON eon_ai.teams_conversation_context(opportunity_id);
-
-
-CREATE INDEX IF NOT EXISTS ix_teams_context_last_used
-ON eon_ai.teams_conversation_context(last_used_at DESC);
-
-
-
--- =========================================================
--- 3. RAG DOCUMENTS
+-- 2. RAG DOCUMENTS
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS rag.documents (
@@ -243,18 +202,6 @@ $$;
 -- =========================================================
 -- 7. TRIGGERS
 -- =========================================================
-
-DROP TRIGGER IF EXISTS trg_teams_context_updated_at
-ON eon_ai.teams_conversation_context;
-
-
-CREATE TRIGGER trg_teams_context_updated_at
-BEFORE UPDATE
-ON eon_ai.teams_conversation_context
-FOR EACH ROW
-EXECUTE FUNCTION eon_ai.touch_updated_at();
-
-
 
 DROP TRIGGER IF EXISTS trg_rag_documents_updated_at
 ON rag.documents;

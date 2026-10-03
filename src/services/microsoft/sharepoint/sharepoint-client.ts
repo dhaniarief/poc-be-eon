@@ -8,26 +8,20 @@ type GraphParams = Record<string, string | number>;
 
 export class GraphApiError extends Error {
   status: number;
-  responseBody: string;
   location: string | null;
 
-  constructor(input: {
-    status: number;
-    responseBody: string;
-    location?: string | null;
-  }) {
+  constructor(input: { status: number; location?: string | null }) {
     super(`Microsoft Graph API failed with status ${input.status}`);
+
     this.name = "GraphApiError";
     this.status = input.status;
-    this.responseBody = input.responseBody;
     this.location = input.location ?? null;
   }
 }
 
 async function getSharePointAccessToken() {
-  return await getMicrosoftAccessToken({
+  return getMicrosoftAccessToken({
     cacheKey: "sharepoint",
-
     scope: "https://graph.microsoft.com/.default",
   });
 }
@@ -43,7 +37,6 @@ async function graphFetch<T>(
 
     headers: {
       Authorization: `Bearer ${token}`,
-
       Accept: "application/json",
 
       ...extraHeaders,
@@ -51,8 +44,6 @@ async function graphFetch<T>(
   });
 
   if (!response.ok) {
-    const responseBody = await response.text();
-
     writeBusinessEvent("error", "INTEGRATION_ERROR", {
       source: "sharepoint",
       operation: "GRAPH_GET",
@@ -62,7 +53,6 @@ async function graphFetch<T>(
 
     throw new GraphApiError({
       status: response.status,
-      responseBody,
       location: response.headers.get("location"),
     });
   }
@@ -72,9 +62,7 @@ async function graphFetch<T>(
 
 export async function graphGet<T>(
   path: string,
-
   params?: GraphParams,
-
   extraHeaders?: Record<string, string>,
 ): Promise<T> {
   const url = new URL(`https://graph.microsoft.com/v1.0${path}`);
@@ -107,6 +95,7 @@ export async function getSharePointSiteByPath(
   rawSitePath: string,
 ) {
   const normalizedHostname = hostname.trim();
+
   const sitePath = rawSitePath.trim().replace(/^\/+/, "").replace(/\/+$/, "");
 
   const path = sitePath
@@ -115,11 +104,8 @@ export async function getSharePointSiteByPath(
 
   const result = await graphGet<{
     id: string;
-
     name?: string;
-
     displayName?: string;
-
     webUrl?: string;
   }>(path, {
     $select: "id,name,displayName,webUrl",
@@ -127,11 +113,8 @@ export async function getSharePointSiteByPath(
 
   return {
     id: result.id,
-
     name: result.name ?? null,
-
     displayName: result.displayName ?? null,
-
     webUrl: result.webUrl ?? null,
   };
 }

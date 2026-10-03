@@ -1,6 +1,8 @@
 import { env } from "../../../config/env.js";
 import { getSharePointSite, graphGet } from "./sharepoint-client.js";
+
 import { escapeODataString } from "../../../utils/odata.util.js";
+import { normalizeText } from "../../../utils/text.util.js";
 
 type SharePointList = {
   id: string;
@@ -9,164 +11,204 @@ type SharePointList = {
   webUrl?: string;
 };
 
-type SharePointListResponse = {
-  value: SharePointList[];
-};
+type MsdsListItem = {
+  id: string;
 
-type MsdsListItemResponse = {
-  value: Array<{
-    id: string;
-    webUrl?: string;
-    lastModifiedDateTime?: string;
-    fields?: {
-      FileLeafRef?: string;
-      IDMaster?: string;
-      Category?: string;
-      URL?: string;
-      remarks?: string;
-      IsDeleted?: boolean | number | string;
-    };
-  }>;
+  webUrl?: string;
+
+  lastModifiedDateTime?: string;
+
+  fields?: {
+    FileLeafRef?: string;
+    IDMaster?: string;
+    Category?: string;
+    URL?: string;
+    remarks?: string;
+    IsDeleted?: boolean | number | string;
+  };
 };
 
 export type MsdsDocument = {
   id: string;
-  itemNumber: string;
-  fileName: string | null;
-  category: string | null;
+
+  productName: string;
+
+  fileName: string;
+
+  category: string;
+
   url: string | null;
+
   sharePointUrl: string | null;
+
   remarks: string | null;
-  lastModifiedDateTime: string | null;
+
+  modifiedAt: string | null;
 };
 
-export type MsdsLookupResult = {
-  found: boolean;
-  itemNumber: string | null;
-  totalDocuments: number;
-  documents: MsdsDocument[];
-  message?: string;
-};
+let listCache: {
+  siteId: string;
+  listId: string;
+} | null = null;
 
+/**
+ * CRM/user product name:
+ *
+ * EONWASH 500
+ *
+ * becomes:
+ *
+ * EONWASH_500
+ *
+ * and can match:
+ *
+ * EONWASH_500_FGxxxxx.pdf
+ */
+function filePrefix(productName: string) {
+  return normalizeText(productName)
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+}
+
+function isDeleted(value: unknown) {
+  return value === true || value === 1 || value === "1" || value === "true";
+}
+
+/**
+ * Resolve the MSDS File SharePoint library once,
+ * then reuse its IDs.
+ */
 async function getMsdsList() {
-  const site = await getSharePointSite();
-  const result = await graphGet<SharePointListResponse>(
-    `/sites/${encodeURIComponent(site.id)}/lists`,
-    { $select: "id,name,displayName,webUrl" },
-  );
-
-  const targetName = env.SHAREPOINT_MSDS_LIBRARY_NAME.trim().toLowerCase();
-  const list = result.value.find(
-    (item) =>
-      String(item.displayName ?? item.name ?? "")
-        .trim()
-        .toLowerCase() === targetName,
-  );
-
-  if (!list) {
-    return { found: false as const, site, list: null };
+  if (listCache) {
+    return listCache;
   }
 
-  return { found: true as const, site, list };
-}
+  const site = await getSharePointSite();
 
-function normalizeItemNumber(value: string) {
-  return String(value ?? "").trim().toUpperCase();
-}
+  const result = await graphGet<{
+    value: SharePointList[];
+  }>(`/sites/${encodeURIComponent(site.id)}/lists`, {
+    $select: "id,name,displayName,webUrl",
+  });
 
-function emptyLookup(itemNumber: string | null, message?: string): MsdsLookupResult {
-  return {
-    found: false,
-    itemNumber,
-    totalDocuments: 0,
-    documents: [],
-    ...(message ? { message } : {}),
-  };
-}
+  const target = normalizeText(env.SHAREPOINT_MSDS_LIBRARY_NAME).toLowerCase();
 
-export async function findMsdsByItemNumbers(
-  itemNumbers: string[],
-): Promise<Record<string, MsdsLookupResult>> {
-  const codes = Array.from(
-    new Set(itemNumbers.map(normalizeItemNumber).filter(Boolean)),
-  );
+  const list = result.value.find((item) => {
+    const name = normalizeText(item.displayName ?? item.name).toLowerCase();
 
-  if (codes.length === 0) return {};
+    return name === target;
+  });
 
-  const msdsList = await getMsdsList();
-  if (!msdsList.found || !msdsList.list) {
-    return Object.fromEntries(
-      codes.map((code) => [
-        code,
-        emptyLookup(code, "MSDS File list tidak ditemukan."),
-      ]),
+  if (!list) {
+    throw new Error(
+      `SharePoint list not found: ${env.SHAREPOINT_MSDS_LIBRARY_NAME}`,
     );
   }
 
-  const itemFilter = codes
-    .map((code) => `fields/IDMaster eq '${escapeODataString(code)}'`)
-    .join(" or ");
+  listCache = {
+    siteId: site.id,
+    listId: list.id,
+  };
 
-  const result = await graphGet<MsdsListItemResponse>(
-    `/sites/${encodeURIComponent(msdsList.site.id)}` +
-      `/lists/${encodeURIComponent(msdsList.list.id)}` +
-      `/items`,
+  return listCache;
+}
+
+export async function findMsdsByProductName(productName: string) {
+  const canonicalName = normalizeText(productName);
+
+  const prefix = filePrefix(canonicalName);
+
+  if (!canonicalName || !prefix) {
+    return {
+      productName: canonicalName,
+      found: false,
+      document: null,
+      documents: [],
+    };
+  }
+
+  const { siteId, listId } = await getMsdsList();
+
+  const escapedPrefix = escapeODataString(prefix);
+
+  const result = await graphGet<{
+    value: MsdsListItem[];
+  }>(
+    `/sites/${encodeURIComponent(siteId)}/lists/${encodeURIComponent(
+      listId,
+    )}/items`,
     {
       $expand:
         "fields($select=FileLeafRef,IDMaster,Category,URL,remarks,IsDeleted)",
-      $filter: `(${itemFilter})`,
-      $top: String(Math.max(100, codes.length * 20)),
+
+      $filter:
+        `fields/Category eq 'MSDS for Email' and ` +
+        `startswith(fields/FileLeafRef,'${escapedPrefix}')`,
+
+      $top: "100",
     },
-    { Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" },
+    {
+      Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly",
+    },
   );
 
-  const grouped = new Map<string, MsdsDocument[]>();
+  const documents = result.value
 
-  for (const item of result.value) {
-    const deleted = item.fields?.IsDeleted;
-    if (deleted === true || deleted === 1 || deleted === "1") continue;
+    // Ignore logically deleted documents.
+    .filter((item) => !isDeleted(item.fields?.IsDeleted))
 
-    const code = normalizeItemNumber(item.fields?.IDMaster ?? "");
-    if (!code || !codes.includes(code)) continue;
+    // Safety filter even though Graph already filters it.
+    .filter(
+      (item) =>
+        normalizeText(item.fields?.Category).toLowerCase() === "msds for email",
+    )
 
-    const document: MsdsDocument = {
+    // Safety filename matching.
+    .filter((item) =>
+      normalizeText(item.fields?.FileLeafRef).toUpperCase().startsWith(prefix),
+    )
+
+    .map<MsdsDocument>((item) => ({
       id: item.id,
-      itemNumber: code,
-      fileName: item.fields?.FileLeafRef ?? null,
-      category: item.fields?.Category ?? null,
-      url: item.fields?.URL ?? item.webUrl ?? null,
+
+      productName: canonicalName,
+
+      fileName: normalizeText(item.fields?.FileLeafRef),
+
+      category: normalizeText(item.fields?.Category),
+
+      url: normalizeText(item.fields?.URL) || item.webUrl || null,
+
       sharePointUrl: item.webUrl ?? null,
-      remarks: item.fields?.remarks ?? null,
-      lastModifiedDateTime: item.lastModifiedDateTime ?? null,
-    };
 
-    const documents = grouped.get(code) ?? [];
-    documents.push(document);
-    grouped.set(code, documents);
-  }
+      remarks: normalizeText(item.fields?.remarks) || null,
 
-  return Object.fromEntries(
-    codes.map((code) => {
-      const documents = grouped.get(code) ?? [];
-      return [
-        code,
-        {
-          found: documents.length > 0,
-          itemNumber: code,
-          totalDocuments: documents.length,
-          documents,
-        } satisfies MsdsLookupResult,
-      ];
-    }),
-  );
+      modifiedAt: item.lastModifiedDateTime ?? null,
+    }))
+
+    // Latest document first.
+    .sort((a, b) =>
+      String(b.modifiedAt ?? "").localeCompare(String(a.modifiedAt ?? "")),
+    );
+
+  return {
+    productName: canonicalName,
+
+    found: documents.length > 0,
+
+    document: documents[0] ?? null,
+
+    documents,
+  };
 }
 
-export async function findMsdsByItemNumber(
-  itemNumber: string,
-): Promise<MsdsLookupResult> {
-  const code = normalizeItemNumber(itemNumber);
-  if (!code) return emptyLookup(null);
+export async function findMsdsByProductNames(productNames: string[]) {
+  const names = [...new Set(productNames.map(normalizeText).filter(Boolean))];
 
-  const results = await findMsdsByItemNumbers([code]);
-  return results[code] ?? emptyLookup(code);
+  const results = await Promise.all(names.map(findMsdsByProductName));
+
+  return Object.fromEntries(
+    results.map((result) => [result.productName, result]),
+  );
 }

@@ -1,27 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { getAgentKey, registeredAgents } from "../../../src/mastra/agents/agent.registry.js";
 import { registeredWorkflows } from "../../../src/mastra/workflows/workflow.registry.js";
-import { opportunityRequestContextSchema } from "../../../src/mastra/runtime/opportunity-context.js";
+import { agentRequestContextSchema } from "../../../src/mastra/runtime/request-context.js";
+import { salesTools } from "../../../src/mastra/tools/tool.registry.js";
 
 describe("Mastra extension contracts", () => {
-  it("resolves registered agents without runner-specific branches", () => {
+  it("keeps agent registration data-driven", () => {
     expect(getAgentKey("sales", "local")).toBe("salesLocal");
     expect(getAgentKey("general", "cloud")).toBe("generalCloud");
     expect(Object.keys(registeredAgents)).toContain("localSynthesis");
   });
 
-  it("starts with no thin production workflows", () => {
-    expect(Object.keys(registeredWorkflows)).toEqual([]);
+  it("keeps the Sales model-visible tool surface small", () => {
+    expect(Object.keys(salesTools)).toEqual([
+      "resolveEntity",
+      "querySales",
+      "getOpportunity",
+      "checkStock",
+      "getMsds",
+    ]);
   });
 
-  it("validates shared opportunity request context", () => {
-    const parsed = opportunityRequestContextSchema.safeParse({
-      opportunityId: "59cf2a22-6281-4465-9232-8ebeab009e5e",
+  it("accepts arbitrary future entity types as host context", () => {
+    const parsed = agentRequestContextSchema.safeParse({
       requestId: "req-1",
       agentId: "sales",
       modelMode: "local",
       conversationId: "conv-1",
+      entities: {
+        opportunity: { id: "opp-1", name: "OP001" },
+        vendor: { id: "vendor-1", name: "Vendor A" },
+      },
     });
     expect(parsed.success).toBe(true);
+  });
+
+  it("starts with no production workflows", () => {
+    expect(Object.keys(registeredWorkflows)).toEqual([]);
   });
 });
