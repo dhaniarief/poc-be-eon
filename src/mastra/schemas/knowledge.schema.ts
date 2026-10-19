@@ -7,7 +7,7 @@ export const knowledgeSearchInputSchema = z.object({
     .min(2)
     .max(2000)
     .describe(
-      "Natural-language query for searching EON internal SOP and IK knowledge.",
+      "Natural-language query for searching EON internal SOP/IK and Product Knowledge, including product, industry, application, and equipment use cases.",
     ),
 
   topK: z.number().int().min(1).max(5).optional().default(5),

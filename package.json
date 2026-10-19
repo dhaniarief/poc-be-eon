@@ -15,7 +15,11 @@
     "rag:migrate": "tsx src/scripts/rag-migrate.ts",
     "rag:sync": "tsx src/scripts/rag-sync.ts",
     "rag:sync:full": "tsx src/scripts/rag-sync.ts --full",
-    "rag:search": "tsx src/scripts/rag-search.ts"
+    "rag:search": "tsx src/scripts/rag-search.ts",
+    "rag:sync:sop": "tsx src/scripts/rag-sync.ts --source=sop",
+    "rag:sync:product": "tsx src/scripts/rag-sync.ts --source=product",
+    "rag:sync:full:sop": "tsx src/scripts/rag-sync.ts --full --source=sop",
+    "rag:sync:full:product": "tsx src/scripts/rag-sync.ts --full --source=product"
   },
   "keywords": [],
   "author": "",
@@ -50,6 +54,7 @@
     "express": "^5.2.1",
     "jose": "^6.2.12",
     "mastra": "^1.30.0",
+    "pdfjs-dist": "^4.10.38",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
     "zod": "^4.6.5"

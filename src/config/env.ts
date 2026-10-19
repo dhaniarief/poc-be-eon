@@ -114,7 +114,31 @@ const envSchema = z.object({
     .string()
     .default("2b9a5ffe-11d9-4f4c-af28-3ee548943605"),
 
+  // Existing SOP / IK source. Keep this source key so old indexed data
+  // remains isolated from Product Knowledge.
   RAG_SOURCE_KEY: z.string().default("sharepoint:mis-sopik:sitepages"),
+
+  // ==================================================
+  // SHAREPOINT PRODUCT KNOWLEDGE RAG
+  // ==================================================
+
+  SHAREPOINT_PRODUCT_HOSTNAME: z
+    .string()
+    .default("eonchemicals1.sharepoint.com"),
+
+  SHAREPOINT_PRODUCT_SITE_PATH: z.string().default("/sites/aidata"),
+
+  SHAREPOINT_PRODUCT_LIST_ID: z
+    .string()
+    .default("3c6e2865-ecf6-4ce7-ad34-98481dceb7de"),
+
+  RAG_PRODUCT_SOURCE_KEY: z
+    .string()
+    .default("sharepoint:aidata:product-knowledge"),
+
+  RAG_SOP_SYNC_ENABLED: booleanFromString.default(true),
+
+  RAG_PRODUCT_SYNC_ENABLED: booleanFromString.default(true),
 
   RAG_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
 

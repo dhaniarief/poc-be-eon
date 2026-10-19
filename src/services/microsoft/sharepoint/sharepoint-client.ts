@@ -1,8 +1,6 @@
 import { env } from "../../../config/env.js";
-
-import { getMicrosoftAccessToken } from "../auth/microsoft-auth.service.js";
-
 import { writeBusinessEvent } from "../../../logging/operation-logger.js";
+import { getMicrosoftAccessToken } from "../auth/microsoft-auth.service.js";
 
 type GraphParams = Record<string, string | number>;
 
@@ -12,7 +10,6 @@ export class GraphApiError extends Error {
 
   constructor(input: { status: number; location?: string | null }) {
     super(`Microsoft Graph API failed with status ${input.status}`);
-
     this.name = "GraphApiError";
     this.status = input.status;
     this.location = input.location ?? null;
@@ -26,20 +23,22 @@ async function getSharePointAccessToken() {
   });
 }
 
-async function graphFetch<T>(
+async function graphResponse(
   url: URL,
-  extraHeaders?: Record<string, string>,
-): Promise<T> {
+  input?: {
+    accept?: string;
+    extraHeaders?: Record<string, string>;
+  },
+) {
   const token = await getSharePointAccessToken();
 
   const response = await fetch(url, {
     method: "GET",
-
+    redirect: "follow",
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-
-      ...extraHeaders,
+      Accept: input?.accept ?? "application/json",
+      ...(input?.extraHeaders ?? {}),
     },
   });
 
@@ -56,6 +55,18 @@ async function graphFetch<T>(
       location: response.headers.get("location"),
     });
   }
+
+  return response;
+}
+
+async function graphFetch<T>(
+  url: URL,
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  const response = await graphResponse(url, {
+    accept: "application/json",
+    extraHeaders,
+  });
 
   return (await response.json()) as T;
 }
@@ -90,12 +101,32 @@ export async function graphGetAbsolute<T>(
   return graphFetch<T>(url, extraHeaders);
 }
 
+/**
+ * Download binary content from Microsoft Graph.
+ * Used by Product Knowledge to download the actual PDF bytes.
+ */
+export async function graphGetBuffer(
+  path: string,
+  params?: GraphParams,
+): Promise<Buffer> {
+  const url = new URL(`https://graph.microsoft.com/v1.0${path}`);
+
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    url.searchParams.set(key, String(value));
+  });
+
+  const response = await graphResponse(url, {
+    accept: "application/octet-stream,application/pdf,*/*",
+  });
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
 export async function getSharePointSiteByPath(
   hostname: string,
   rawSitePath: string,
 ) {
   const normalizedHostname = hostname.trim();
-
   const sitePath = rawSitePath.trim().replace(/^\/+/, "").replace(/\/+$/, "");
 
   const path = sitePath

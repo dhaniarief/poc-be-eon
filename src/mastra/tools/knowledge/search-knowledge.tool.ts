@@ -171,7 +171,11 @@ export const searchKnowledgeTool = createTool({
   id: "knowledge.search",
 
   description: `
-Search the synchronized EON internal SOP and IK knowledge base.
+Search the synchronized EON internal knowledge base.
+
+The knowledge base contains BOTH:
+1. SOP / IK internal procedures from SharePoint MIS-SOPIK.
+2. Product Knowledge documents from SharePoint /sites/aidata/Product Knowledge.
 
 Use this tool on EVERY NEW USER TURN about:
 - SOP / IK
@@ -185,6 +189,13 @@ Use this tool on EVERY NEW USER TURN about:
 - internal policy
 - MIS operational guidance
 - application development procedures
+- product information
+- product application / technical reference
+- product recommendation by application or equipment
+- equipment-specific product knowledge
+- success story / customer testimonial / case study
+- training material
+- industry-specific product knowledge
 
 IMPORTANT:
 - Previous conversation memory is not authoritative SOP/IK evidence.
@@ -324,7 +335,7 @@ IMPORTANT:
           `Process: ${item.process ?? "-"}`,
           `Version: ${item.docVersion ?? "-"}`,
           `Score: ${item.score}`,
-          `Source: ${item.sourceUrl ?? "-"}`,
+          `Document URL: ${item.sourceUrl ?? "-"}`,
           "",
           "CONTENT:",
           item.content,
@@ -342,8 +353,12 @@ IMPORTANT:
         `QUERY: ${output.query}`,
         `TOTAL RESULTS: ${output.totalResults}`,
         "",
-        "Relevant official EON internal SOP/IK evidence was found.",
+        "Relevant official EON internal knowledge evidence was found.",
         "Answer the user's question from the evidence below.",
+        "For Product Knowledge, use metadata in CONTENT such as Produk, Industri, Aplikasi, and Equipment when relevant.",
+        "If Document URL is available and the answer uses that document, include the most relevant document link in the answer.",
+        "If the user asks for the PDF, file, source, document, or link, ALWAYS provide the returned Document URL.",
+        "Do NOT invent or reconstruct a SharePoint URL.",
         "Do NOT say the information was not found.",
         "",
         evidence,
