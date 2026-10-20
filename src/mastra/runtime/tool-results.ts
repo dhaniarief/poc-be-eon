@@ -11,6 +11,9 @@ const toolAliasMap: Record<string, string> = {
   webSearch: "web.search",
   searxngWebSearch: "web.search",
   web_search: "openai.web_search",
+  searchLeMiningProducts: "le-mining.products",
+  searchLeMiningKnowledge: "le-mining.knowledge",
+  searchLePublicWeb: "le-mining.web",
 };
 
 export function normalizeToolName(rawToolName: string, agentId: string) {

@@ -15,11 +15,7 @@
     "rag:migrate": "tsx src/scripts/rag-migrate.ts",
     "rag:sync": "tsx src/scripts/rag-sync.ts",
     "rag:sync:full": "tsx src/scripts/rag-sync.ts --full",
-    "rag:search": "tsx src/scripts/rag-search.ts",
-    "rag:sync:sop": "tsx src/scripts/rag-sync.ts --source=sop",
-    "rag:sync:product": "tsx src/scripts/rag-sync.ts --source=product",
-    "rag:sync:full:sop": "tsx src/scripts/rag-sync.ts --full --source=sop",
-    "rag:sync:full:product": "tsx src/scripts/rag-sync.ts --full --source=product"
+    "rag:search": "tsx src/scripts/rag-search.ts"
   },
   "keywords": [],
   "author": "",

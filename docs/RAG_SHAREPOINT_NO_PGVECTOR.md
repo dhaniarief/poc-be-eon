@@ -1,144 +1,51 @@
-# EON SOP / IK RAG - PostgreSQL Array Version
+# EON Product Knowledge RAG - PostgreSQL Array Version
 
-This implementation does **not** require pgvector.
+This RAG contains **Product Knowledge only**.
 
-Embeddings are stored in PostgreSQL as `double precision[]`. At query time the
-backend loads the active chunk embeddings and calculates cosine similarity in
-Node.js. This is intentionally simple for the current SOP/IK volume.
+Source:
+- Site: `/sites/aidata`
+- Library: `Product Knowledge`
+- List ID: `3c6e2865-ecf6-4ce7-ad34-98481dceb7de`
 
-## Source
+SOP / IK and MIS-SOPIK are intentionally not part of this RAG anymore.
 
-- Host: `eonchemicals1.sharepoint.com`
-- Site: `/sites/MIS-SOPIK`
-- List: `Site Pages`
-- List ID: `2b9a5ffe-11d9-4f4c-af28-3ee548943605`
-- Main page content field: `CanvasContent1`
-- Indexed document types: `SOP` and `IK`
-- Searchable status: `Active`, effective, and not expired
+## SharePoint metadata indexed
 
-## 1. PostgreSQL
+- `Category`
+- `ProductName`
+- `IndustryType`
+- `Application`
+- `Equipment`
+- PDF text
+- SharePoint document URL
 
-Run this file in pgAdmin Query Tool against the `be_eon_ai` database:
+`Application` and `Equipment` are Text columns in SharePoint. The ingestion service splits semicolon-delimited values into PostgreSQL `TEXT[]` arrays.
 
-```text
-db/001_rag_sharepoint_array.sql
-```
+## PostgreSQL
 
-No `CREATE EXTENSION vector` command is needed.
+Tables:
 
-Expected objects:
+- `rag.documents`
+- `rag.chunks`
+- `rag.sync_state`
 
-```text
-rag.documents
-rag.chunks
-rag.sync_state
-```
+Embeddings remain `DOUBLE PRECISION[]`; pgvector is not required.
 
-## 2. Environment variables
+## Commands
 
-Add to `.env.development` / `.env.production`:
-
-```env
-SHAREPOINT_SOP_HOSTNAME=eonchemicals1.sharepoint.com
-SHAREPOINT_SOP_SITE_PATH=/sites/MIS-SOPIK
-SHAREPOINT_SOP_LIST_ID=2b9a5ffe-11d9-4f4c-af28-3ee548943605
-
-RAG_SOURCE_KEY=sharepoint:mis-sopik:sitepages
-RAG_EMBEDDING_MODEL=text-embedding-3-small
-RAG_EMBED_BATCH_SIZE=32
-RAG_SEARCH_TOP_K=5
-RAG_MIN_SCORE=0.35
-RAG_CHUNK_SIZE_CHARS=1800
-RAG_CHUNK_OVERLAP_CHARS=250
-
-RAG_SYNC_ENABLED=true
-RAG_SYNC_ON_START=true
-RAG_SYNC_INTERVAL_MS=300000
-```
-
-The existing `OPENAI_API_KEY`, `DATABASE_URL`, and Microsoft application
-credentials are reused.
-
-The Microsoft Entra app needs permission to read the MIS-SOPIK site through
-Microsoft Graph. `Sites.Read.All` is the standard application permission; if
-EON uses `Sites.Selected`, grant the application read access to this site.
-
-## 3. Install
-
-```powershell
-npm i
-```
-
-No additional package is required for this RAG implementation.
-
-## 4. Initial sync
-
-```powershell
+```bash
+npm run rag:migrate
 npm run rag:sync:full
+npm run rag:search -- "open gear lubrication ball mill"
 ```
 
-The first run enumerates the current Site Pages through Microsoft Graph delta,
-reads the latest fields including `CanvasContent1`, cleans the page content,
-chunks it, creates OpenAI embeddings, stores the vectors as PostgreSQL arrays,
-and saves the returned Graph delta link.
+`rag:migrate` drops and recreates the `rag` schema. It does not drop `mastra` or `mastra_editor`.
 
-## 5. Verify PostgreSQL
+## Mining filter
 
-```sql
-SELECT
-  source_item_id,
-  title,
-  doc_number,
-  doc_type,
-  process,
-  status,
-  doc_version,
-  is_searchable,
-  indexed_at
-FROM rag.documents
-ORDER BY source_item_id::integer;
-```
+The LE Mining agent searches Product Knowledge only when `IndustryType` overlaps:
 
-```sql
-SELECT
-  d.title,
-  COUNT(c.id) AS chunks,
-  MAX(cardinality(c.embedding)) AS embedding_dimensions
-FROM rag.documents d
-LEFT JOIN rag.chunks c ON c.document_id = d.id
-GROUP BY d.id, d.title
-ORDER BY d.title;
-```
+- `Mining Contractor`
+- `Mining Owner`
 
-With `text-embedding-3-small`, the default vector length is normally 1536, but
-the database does not hard-code the size.
-
-## 6. Direct search test
-
-```powershell
-npm run rag:search -- "berapa maksimal waktu development aplikasi in-house"
-```
-
-## 7. Start application
-
-```powershell
-npm run dev
-```
-
-The Sales Agent now exposes `knowledge.search`. Questions about SOP, IK,
-internal procedures, responsibilities, SLA/limits, approvals, and work
-instructions are routed to the internal knowledge tool.
-
-## 8. Automatic sync
-
-When enabled, the server checks Microsoft Graph delta every five minutes by
-default. Only changed/deleted list items are processed after the first sync.
-If a delta token becomes invalid (`410 Gone`), the service performs one fresh
-enumeration and stores a new delta link.
-
-## Important operational note
-
-This array-based search is appropriate while the internal knowledge base is
-small (for example hundreds or a few thousand chunks). If the corpus grows
-substantially, migrate `rag.chunks.embedding` to pgvector or a dedicated vector
-store so similarity search can be indexed instead of calculated in Node.js.
+This is enforced by the repository query, not only by the system prompt.

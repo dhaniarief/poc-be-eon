@@ -17,6 +17,30 @@ function pick(value: unknown, keys: readonly string[]) {
   );
 }
 
+function compactKnowledgeResult(result: unknown) {
+  const value = asRecord(result);
+
+  return {
+    found: value.found ?? false,
+    query: value.query ?? "",
+    totalResults: value.totalResults ?? 0,
+    results: asArray(value.results).map((item) =>
+      pick(item, [
+        "score",
+        "title",
+        "category",
+        "productName",
+        "industryTypes",
+        "applications",
+        "equipment",
+        "content",
+        "sourceUrl",
+        "sourceModifiedAt",
+      ]),
+    ),
+  };
+}
+
 export function compactToolResult(toolName: string, result: unknown): unknown {
   const value = asRecord(result);
 
@@ -57,28 +81,32 @@ export function compactToolResult(toolName: string, result: unknown): unknown {
       return result;
 
     case "knowledge.search":
+    case "le-mining.knowledge":
+      return compactKnowledgeResult(result);
+
+    case "le-mining.products":
       return {
         found: value.found ?? false,
         query: value.query ?? "",
-        totalResults: value.totalResults ?? 0,
-        results: asArray(value.results).map((item) =>
+        scope: value.scope ?? null,
+        totalEligible: value.totalEligible ?? 0,
+        totalMatched: value.totalMatched ?? 0,
+        returned: value.returned ?? 0,
+        products: asArray(value.products).map((item) =>
           pick(item, [
-            "score",
-            "title",
-            "docNumber",
-            "docType",
-            "process",
-            "docVersion",
-            "content",
-            "sourceUrl",
-            "sourceModifiedAt",
+            "name",
+            "productNumber",
+            "description",
+            "industryLabels",
           ]),
         ),
       };
 
     case "web.search":
+    case "le-mining.web":
       return {
         query: value.query ?? "",
+        allowedDomains: value.allowedDomains ?? undefined,
         results: asArray(value.results).map((item) =>
           pick(item, ["title", "url", "snippet"]),
         ),

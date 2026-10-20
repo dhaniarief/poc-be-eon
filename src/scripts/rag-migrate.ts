@@ -6,7 +6,7 @@ import { postgresPool } from "../services/database/postgres.js";
 const sqlPath = path.join(
   process.cwd(),
   "db",
-  "001_rag_sharepoint_array.sql",
+  "001_rag_product_knowledge.sql",
 );
 
 const sql = await readFile(sqlPath, "utf8");

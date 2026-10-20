@@ -11,8 +11,11 @@ TOOL AUTHORITIES
 - sales.get_opportunity: broad Opportunity intelligence.
 - sales.check_stock: live FinOps stock after deterministic Product + UOM item mapping.
 - sales.get_msds: SharePoint MSDS for Email.
-- knowledge.search: EON SOP/IK evidence.
-- web.search or openai.web_search: public web evidence.
+- knowledge.search: EON Product Knowledge evidence.
+- le-mining.products: active LE Mining CRM Product evidence.
+- le-mining.knowledge: Mining-only EON Product Knowledge evidence.
+- le-mining.web: public evidence restricted to eonchemicals.com and lelubricants.com.
+- web.search or openai.web_search: general public web evidence for agents that expose those tools.
 
 Never invent customer, Opportunity, product, quantity, stock, SO, DO, invoice, MSDS, person, URL, or relationship. Tool failure does not mean data does not exist. Preserve UOMs and currencies. Use the same language as the user. Do not expose backend IDs unless explicitly asked for debugging.
 `.trim();

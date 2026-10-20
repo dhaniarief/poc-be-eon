@@ -95,16 +95,16 @@ function buildDocumentText(
   document: ProductKnowledgeDocument,
   extractedText: string,
 ) {
-  return normalizeText(
-    `${metadataHeader(document)}\n\n${extractedText}`,
-  );
+  const header = metadataHeader(document);
+  return normalizeText(extractedText ? `${header}\n\n${extractedText}` : header);
 }
 
 function buildChunkText(
   document: ProductKnowledgeDocument,
   bodyChunk: string,
 ) {
-  return `${metadataHeader(document)}\n\n${bodyChunk}`.trim();
+  const header = metadataHeader(document);
+  return normalizeText(bodyChunk ? `${header}\n\n${bodyChunk}` : header);
 }
 
 function estimateTokenHint(content: string) {
@@ -124,10 +124,9 @@ async function indexDocument(document: ProductKnowledgeDocument) {
   const documentText = buildDocumentText(document, extractedText);
   const contentHash = documentText ? sha256(documentText) : null;
 
-  // Current repository only exposes documents with status = active.
-  // Product Knowledge has no Status column, so active is the correct
-  // synthetic status for every successfully indexed library document.
-  const searchable = extractedText.length >= 40;
+  // Metadata-only indexing is allowed when the PDF has little/no extractable
+  // text. This keeps Product Name / Industry / Application / Equipment useful.
+  const searchable = documentText.length >= 40;
 
   const existing = await findRagDocument(sourceKey, document.id);
 
@@ -137,19 +136,11 @@ async function indexDocument(document: ProductKnowledgeDocument) {
     sourceType: "sharepoint_document_library",
     title: document.title,
     fileName: document.fileName,
-    docNumber: null,
-    docType: document.category,
-    process:
-      document.industryTypes.length > 0
-        ? document.industryTypes.join(", ")
-        : null,
-    status: "active",
-    docVersion: null,
-    effectiveFrom: null,
-    validTo: null,
-    reminderToUpdate: null,
-    managerApprovalStatus: null,
-    qaApprovalStatus: null,
+    category: document.category,
+    productName: document.productName,
+    industryTypes: document.industryTypes,
+    applications: document.applications,
+    equipment: document.equipment,
     sourceUrl: buildSourceUrl(document),
     sourceEtag: document.eTag,
     sourceModifiedAt: document.modifiedAt,
@@ -157,11 +148,6 @@ async function indexDocument(document: ProductKnowledgeDocument) {
     contentText: documentText || null,
     isSearchable: searchable,
     metadata: {
-      category: document.category,
-      productName: document.productName,
-      industryTypes: document.industryTypes,
-      applications: document.applications,
-      equipment: document.equipment,
       fileRef: document.fileRef,
       webUrl: document.webUrl,
       driveId: document.driveId,
@@ -180,8 +166,9 @@ async function indexDocument(document: ProductKnowledgeDocument) {
       sourceKey,
       itemId: document.id,
       fileName: document.fileName,
-      reason: "PDF_TEXT_EMPTY_OR_TOO_SHORT",
+      reason: "PRODUCT_KNOWLEDGE_CONTENT_TOO_SHORT",
       extractedChars: extractedText.length,
+      indexedChars: documentText.length,
     });
 
     return { status: "disabled" as const };
@@ -196,20 +183,22 @@ async function indexDocument(document: ProductKnowledgeDocument) {
     return { status: "unchanged" as const };
   }
 
-  const bodyChunks = chunkKnowledgeText({
-    text: extractedText,
-    maxChars: env.RAG_CHUNK_SIZE_CHARS,
-    overlapChars: env.RAG_CHUNK_OVERLAP_CHARS,
-  });
+  const bodyChunks = extractedText
+    ? chunkKnowledgeText({
+        text: extractedText,
+        maxChars: env.RAG_CHUNK_SIZE_CHARS,
+        overlapChars: env.RAG_CHUNK_OVERLAP_CHARS,
+      })
+    : [""];
 
-  if (bodyChunks.length === 0) {
+  const chunkTexts = bodyChunks
+    .map((chunk) => buildChunkText(document, chunk))
+    .filter(Boolean);
+
+  if (chunkTexts.length === 0) {
     await disableRagDocument(stored.id);
     return { status: "disabled" as const };
   }
-
-  const chunkTexts = bodyChunks.map((chunk) =>
-    buildChunkText(document, chunk),
-  );
 
   const embeddings = await createEmbeddings(chunkTexts);
 

@@ -4,28 +4,19 @@ import {
   knowledgeSearchInputSchema,
   knowledgeSearchResultSchema,
 } from "../../schemas/knowledge.schema.js";
-
 import {
   searchKnowledge,
   type KnowledgeSearchResult,
 } from "../../../services/rag/knowledge-search.service.js";
 
-/**
- * Check plain object.
- */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * Try parsing JSON string.
- */
 function tryParseJson(value: string): unknown | null {
   const trimmed = value.trim();
 
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return null;
-  }
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
 
   try {
     return JSON.parse(trimmed);
@@ -34,15 +25,10 @@ function tryParseJson(value: string): unknown | null {
   }
 }
 
-/**
- * Detect KnowledgeSearchResult.
- */
 function isKnowledgeSearchResult(
   value: unknown,
 ): value is KnowledgeSearchResult {
-  if (!isRecord(value)) {
-    return false;
-  }
+  if (!isRecord(value)) return false;
 
   return (
     typeof value.found === "boolean" &&
@@ -53,66 +39,35 @@ function isKnowledgeSearchResult(
   );
 }
 
-/**
- * Mastra / AI SDK / Channel may wrap a tool result.
- *
- * This function searches common wrapper levels without making
- * assumptions about one specific runtime representation.
- */
-function extractKnowledgeResult(input: unknown): KnowledgeSearchResult | null {
+export function extractKnowledgeResult(
+  input: unknown,
+): KnowledgeSearchResult | null {
   const queue: unknown[] = [input];
-
   const visited = new Set<object>();
-
   let inspected = 0;
 
   while (queue.length > 0 && inspected < 40) {
     const current = queue.shift();
-
     inspected += 1;
 
-    if (isKnowledgeSearchResult(current)) {
-      return current;
-    }
+    if (isKnowledgeSearchResult(current)) return current;
 
-    /**
-     * Sometimes result may be serialized JSON.
-     */
     if (typeof current === "string") {
       const parsed = tryParseJson(current);
-
-      if (parsed !== null) {
-        queue.push(parsed);
-      }
-
+      if (parsed !== null) queue.push(parsed);
       continue;
     }
 
-    /**
-     * Traverse arrays such as content parts.
-     */
     if (Array.isArray(current)) {
-      for (const item of current.slice(0, 10)) {
-        queue.push(item);
-      }
-
+      queue.push(...current.slice(0, 10));
       continue;
     }
 
-    if (!isRecord(current)) {
-      continue;
-    }
-
-    if (visited.has(current)) {
-      continue;
-    }
-
+    if (!isRecord(current)) continue;
+    if (visited.has(current)) continue;
     visited.add(current);
 
-    /**
-     * Common wrapper names used by tool runtimes/adapters.
-     */
-    const possibleKeys = [
+    for (const key of [
       "output",
       "result",
       "value",
@@ -122,29 +77,16 @@ function extractKnowledgeResult(input: unknown): KnowledgeSearchResult | null {
       "toolResult",
       "toolOutput",
       "payload",
-    ];
-
-    for (const key of possibleKeys) {
-      if (key in current) {
-        queue.push(current[key]);
-      }
+    ]) {
+      if (key in current) queue.push(current[key]);
     }
   }
 
   return null;
 }
 
-/**
- * Debug only the shape.
- * Do not dump entire SOP content into logs.
- */
 function getShape(value: unknown) {
-  if (value === null) {
-    return {
-      type: "null",
-      keys: [],
-    };
-  }
+  if (value === null) return { type: "null", keys: [] };
 
   if (Array.isArray(value)) {
     return {
@@ -167,48 +109,102 @@ function getShape(value: unknown) {
   };
 }
 
+export function knowledgeResultToModelOutput(rawOutput: unknown) {
+  const output = extractKnowledgeResult(rawOutput);
+
+  if (!output) {
+    return {
+      type: "text" as const,
+      value: [
+        "PRODUCT KNOWLEDGE SEARCH RESULT",
+        "STATUS: TECHNICAL_ERROR",
+        "",
+        "The Product Knowledge tool executed, but its structured result",
+        "could not be converted into model-readable evidence.",
+        "",
+        "Do NOT interpret this as FOUND: FALSE.",
+      ].join("\n"),
+    };
+  }
+
+  if (output.found === false || output.results.length === 0) {
+    return {
+      type: "text" as const,
+      value: [
+        "PRODUCT KNOWLEDGE SEARCH RESULT",
+        "STATUS: SUCCESS",
+        "FOUND: FALSE",
+        `QUERY: ${output.query}`,
+        "",
+        "The Product Knowledge search completed successfully,",
+        "but no relevant evidence was found.",
+      ].join("\n"),
+    };
+  }
+
+  const evidence = output.results
+    .slice(0, 3)
+    .map((item, index) =>
+      [
+        `EVIDENCE ${index + 1}`,
+        `Title: ${item.title}`,
+        `Category: ${item.category ?? "-"}`,
+        `Product: ${item.productName ?? "-"}`,
+        `Industry: ${item.industryTypes.join(", ") || "-"}`,
+        `Application: ${item.applications.join(", ") || "-"}`,
+        `Equipment: ${item.equipment.join(", ") || "-"}`,
+        `Score: ${item.score}`,
+        `Document URL: ${item.sourceUrl ?? "-"}`,
+        "",
+        "CONTENT:",
+        item.content,
+      ].join("\n"),
+    )
+    .join("\n\n----------------------------------------\n\n");
+
+  return {
+    type: "text" as const,
+    value: [
+      "PRODUCT KNOWLEDGE SEARCH RESULT",
+      "STATUS: SUCCESS",
+      "FOUND: TRUE",
+      `QUERY: ${output.query}`,
+      `TOTAL RESULTS: ${output.totalResults}`,
+      "",
+      "Relevant official EON Product Knowledge evidence was found.",
+      "Answer from the evidence below.",
+      "Use Product, Industry, Application, and Equipment metadata when relevant.",
+      "If Document URL is available and the answer uses that document, include the most relevant document link.",
+      "If the user asks for the PDF, file, source, document, or link, ALWAYS provide the returned Document URL.",
+      "Never invent or reconstruct a SharePoint URL.",
+      "",
+      evidence,
+    ].join("\n"),
+  };
+}
+
 export const searchKnowledgeTool = createTool({
   id: "knowledge.search",
 
   description: `
-Search the synchronized EON internal knowledge base.
+Search the synchronized EON Product Knowledge library from SharePoint /sites/aidata/Product Knowledge.
 
-The knowledge base contains BOTH:
-1. SOP / IK internal procedures from SharePoint MIS-SOPIK.
-2. Product Knowledge documents from SharePoint /sites/aidata/Product Knowledge.
-
-Use this tool on EVERY NEW USER TURN about:
-- SOP / IK
-- internal procedures
-- responsibilities / PIC
-- validation
-- approval
-- work instructions
-- process steps
-- SLA / duration / limits
-- internal policy
-- MIS operational guidance
-- application development procedures
+Use on every new relevant user turn for:
 - product information
 - product application / technical reference
 - product recommendation by application or equipment
 - equipment-specific product knowledge
+- MSDS / SDS documents stored in Product Knowledge
 - success story / customer testimonial / case study
 - training material
 - industry-specific product knowledge
 
-IMPORTANT:
-- Previous conversation memory is not authoritative SOP/IK evidence.
-- Use the user's current natural-language question as the query.
-- If found=true, relevant internal evidence HAS BEEN FOUND.
-- Answer from the returned evidence.
-- Never say "not found" when found=true.
-- Do not repeat this tool in the SAME user turn after found=true.
-- Only say information was not found when found=false.
+This tool does NOT contain SOP/IK knowledge.
+Previous conversation memory is not authoritative Product Knowledge evidence.
+Only say information was not found when this tool returns found=false.
 `.trim(),
 
   inputSchema: knowledgeSearchInputSchema,
-
   outputSchema: knowledgeSearchResultSchema,
 
   execute: async (input) => {
@@ -219,150 +215,25 @@ IMPORTANT:
       found: result.found,
       totalCandidates: result.totalCandidates,
       totalResults: result.totalResults,
-
       bestTitle: result.results[0]?.title ?? null,
-
       bestScore: result.results[0]?.score ?? null,
-
-      bestContentLength: result.results[0]?.content?.length ?? 0,
-
-      bestContentPreview: result.results[0]?.content?.slice(0, 250) ?? null,
     });
 
     return result;
   },
 
-  /**
-   * Tool lifecycle debugging.
-   */
   onOutput: (args) => {
     const extracted = extractKnowledgeResult(args);
 
     console.log("[KNOWLEDGE TOOL ONOUTPUT]", {
       argsShape: getShape(args),
-
       extracted: extracted !== null,
-
       found: extracted?.found ?? null,
-
       query: extracted?.query ?? null,
-
       totalResults: extracted?.results.length ?? 0,
-
       firstTitle: extracted?.results[0]?.title ?? null,
-
-      firstContentLength: extracted?.results[0]?.content?.length ?? 0,
     });
   },
 
-  /**
-   * Payload visible to the LLM.
-   */
-  toModelOutput: (rawOutput) => {
-    const output = extractKnowledgeResult(rawOutput);
-
-    console.log("[KNOWLEDGE TO MODEL DEBUG]", {
-      rawShape: getShape(rawOutput),
-
-      extracted: output !== null,
-
-      found: output?.found ?? null,
-
-      query: output?.query ?? null,
-
-      resultCount: output?.results.length ?? 0,
-
-      firstTitle: output?.results[0]?.title ?? null,
-
-      firstContentLength: output?.results[0]?.content?.length ?? 0,
-    });
-
-    /**
-     * IMPORTANT:
-     *
-     * Failure to extract runtime payload
-     * DOES NOT mean "knowledge not found".
-     */
-    if (!output) {
-      return {
-        type: "text" as const,
-
-        value: [
-          "INTERNAL KNOWLEDGE SEARCH RESULT",
-          "STATUS: TECHNICAL_ERROR",
-          "",
-          "The knowledge tool executed, but its structured result",
-          "could not be converted into model-readable evidence.",
-          "",
-          "Do NOT interpret this as FOUND: FALSE.",
-          "Do NOT claim that the SOP/IK does not contain the information.",
-        ].join("\n"),
-      };
-    }
-
-    /**
-     * Real successful empty search.
-     */
-    if (output.found === false || output.results.length === 0) {
-      return {
-        type: "text" as const,
-
-        value: [
-          "INTERNAL KNOWLEDGE SEARCH RESULT",
-          "STATUS: SUCCESS",
-          "FOUND: FALSE",
-          `QUERY: ${output.query}`,
-          "",
-          "The internal SOP/IK search completed successfully,",
-          "but no relevant evidence was found.",
-        ].join("\n"),
-      };
-    }
-
-    /**
-     * Relevant evidence exists.
-     *
-     * Top 3 chunks is enough.
-     */
-    const evidence = output.results
-      .slice(0, 3)
-      .map((item, index) => {
-        return [
-          `EVIDENCE ${index + 1}`,
-          `Title: ${item.title}`,
-          `Document Number: ${item.docNumber ?? "-"}`,
-          `Document Type: ${item.docType ?? "-"}`,
-          `Process: ${item.process ?? "-"}`,
-          `Version: ${item.docVersion ?? "-"}`,
-          `Score: ${item.score}`,
-          `Document URL: ${item.sourceUrl ?? "-"}`,
-          "",
-          "CONTENT:",
-          item.content,
-        ].join("\n");
-      })
-      .join("\n\n----------------------------------------\n\n");
-
-    return {
-      type: "text" as const,
-
-      value: [
-        "INTERNAL KNOWLEDGE SEARCH RESULT",
-        "STATUS: SUCCESS",
-        "FOUND: TRUE",
-        `QUERY: ${output.query}`,
-        `TOTAL RESULTS: ${output.totalResults}`,
-        "",
-        "Relevant official EON internal knowledge evidence was found.",
-        "Answer the user's question from the evidence below.",
-        "For Product Knowledge, use metadata in CONTENT such as Produk, Industri, Aplikasi, and Equipment when relevant.",
-        "If Document URL is available and the answer uses that document, include the most relevant document link in the answer.",
-        "If the user asks for the PDF, file, source, document, or link, ALWAYS provide the returned Document URL.",
-        "Do NOT invent or reconstruct a SharePoint URL.",
-        "Do NOT say the information was not found.",
-        "",
-        evidence,
-      ].join("\n"),
-    };
-  },
+  toModelOutput: knowledgeResultToModelOutput,
 });

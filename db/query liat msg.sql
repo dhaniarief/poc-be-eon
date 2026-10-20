@@ -59,6 +59,10 @@ WITH messages AS (
                 THEN 'Development Web'
             WHEN m."resourceId" = 'sales-cloud-agent'
                 THEN 'Sales Cloud'
+            WHEN m."resourceId" = 'le-mining-cloud-agent'
+                THEN 'LE Mining Cloud'
+            WHEN m."resourceId" = 'le-mining-local-agent'
+                THEN 'LE Mining Local'
             ELSE 'Other'
         END AS channel
 

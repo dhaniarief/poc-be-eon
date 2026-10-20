@@ -97,16 +97,20 @@ const PRODUCT_FIELDS = [
   "Modified",
 ].join(",");
 
-function asNullableString(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  return text ? text : null;
+function normalizeWhitespace(value: string) {
+  return value.replace(/\s+/g, " ").trim();
 }
 
-function asStringArray(value: unknown): string[] {
+function asNullableString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = normalizeWhitespace(String(value));
+  return text || null;
+}
+
+function asChoiceArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
-      .map((item) => String(item).trim())
+      .map((item) => normalizeWhitespace(String(item)))
       .filter(Boolean);
   }
 
@@ -114,18 +118,32 @@ function asStringArray(value: unknown): string[] {
     const trimmed = value.trim();
     if (!trimmed) return [];
 
-    // Defensive fallback for classic SharePoint multi-value encodings.
     if (trimmed.includes(";#")) {
       return trimmed
         .split(";#")
-        .map((item) => item.trim())
+        .map((item) => normalizeWhitespace(item))
         .filter(Boolean);
     }
 
-    return [trimmed];
+    return [normalizeWhitespace(trimmed)].filter(Boolean);
   }
 
   return [];
+}
+
+function asDelimitedTextArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => asDelimitedTextArray(item))
+      .filter(Boolean);
+  }
+
+  if (typeof value !== "string") return [];
+
+  return value
+    .split(/;#|;|\r?\n/g)
+    .map((item) => normalizeWhitespace(item))
+    .filter(Boolean);
 }
 
 function stripPdfExtension(fileName: string | null) {
@@ -242,9 +260,9 @@ export async function getProductKnowledgeDocumentByItemId(input: {
     fileRef: asNullableString(fields.FileRef),
     category: asNullableString(fields.Category),
     productName: asNullableString(fields.ProductName),
-    industryTypes: asStringArray(fields.IndustryType),
-    applications: asStringArray(fields.Application),
-    equipment: asStringArray(fields.Equipment),
+    industryTypes: asChoiceArray(fields.IndustryType),
+    applications: asDelimitedTextArray(fields.Application),
+    equipment: asDelimitedTextArray(fields.Equipment),
     webUrl: driveItem.webUrl ?? item.webUrl ?? null,
     eTag:
       item.eTag ??

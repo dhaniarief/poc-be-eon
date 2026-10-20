@@ -8,16 +8,11 @@ export type RagDocumentInput = {
   sourceType: string;
   title: string;
   fileName: string | null;
-  docNumber: string | null;
-  docType: string | null;
-  process: string | null;
-  status: string | null;
-  docVersion: number | null;
-  effectiveFrom: string | null;
-  validTo: string | null;
-  reminderToUpdate: string | null;
-  managerApprovalStatus: string | null;
-  qaApprovalStatus: string | null;
+  category: string | null;
+  productName: string | null;
+  industryTypes: string[];
+  applications: string[];
+  equipment: string[];
   sourceUrl: string | null;
   sourceEtag: string | null;
   sourceModifiedAt: string | null;
@@ -50,10 +45,11 @@ export type RagSearchCandidate = {
   content: string;
   embedding: number[];
   title: string;
-  docNumber: string | null;
-  docType: string | null;
-  process: string | null;
-  docVersion: number | null;
+  category: string | null;
+  productName: string | null;
+  industryTypes: string[];
+  applications: string[];
+  equipment: string[];
   sourceUrl: string | null;
   sourceModifiedAt: string | null;
 };
@@ -82,38 +78,34 @@ function toNumberArray(value: unknown): number[] {
   return [];
 }
 
-function toIsoString(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString();
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
   }
 
   if (typeof value === "string") {
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/^\{/, "").replace(/\}$/, "");
+    if (!trimmed) return [];
 
-    if (!trimmed) {
-      return null;
-    }
-
-    const parsed = new Date(trimmed);
-
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-
-    return trimmed;
+    return trimmed
+      .split(",")
+      .map((item) => item.replace(/^"|"$/g, "").trim())
+      .filter(Boolean);
   }
 
-  const parsed = new Date(String(value));
+  return [];
+}
 
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString();
-  }
+function toIsoString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
 
-  return null;
+  if (value instanceof Date) return value.toISOString();
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
 }
 
 export async function findRagDocument(
@@ -175,16 +167,11 @@ export async function upsertRagDocument(
         source_type,
         title,
         file_name,
-        doc_number,
-        doc_type,
-        process,
-        status,
-        doc_version,
-        effective_from,
-        valid_to,
-        reminder_to_update,
-        manager_approval_status,
-        qa_approval_status,
+        category,
+        product_name,
+        industry_types,
+        applications,
+        equipment,
         source_url,
         source_etag,
         source_modified_at,
@@ -194,25 +181,20 @@ export async function upsertRagDocument(
         metadata,
         last_synced_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22::jsonb, now()
+        $1, $2, $3, $4, $5,
+        $6, $7, $8::text[], $9::text[], $10::text[],
+        $11, $12, $13, $14, $15, $16, $17::jsonb, now()
       )
       ON CONFLICT (source_key, source_item_id)
       DO UPDATE SET
         source_type = EXCLUDED.source_type,
         title = EXCLUDED.title,
         file_name = EXCLUDED.file_name,
-        doc_number = EXCLUDED.doc_number,
-        doc_type = EXCLUDED.doc_type,
-        process = EXCLUDED.process,
-        status = EXCLUDED.status,
-        doc_version = EXCLUDED.doc_version,
-        effective_from = EXCLUDED.effective_from,
-        valid_to = EXCLUDED.valid_to,
-        reminder_to_update = EXCLUDED.reminder_to_update,
-        manager_approval_status = EXCLUDED.manager_approval_status,
-        qa_approval_status = EXCLUDED.qa_approval_status,
+        category = EXCLUDED.category,
+        product_name = EXCLUDED.product_name,
+        industry_types = EXCLUDED.industry_types,
+        applications = EXCLUDED.applications,
+        equipment = EXCLUDED.equipment,
         source_url = EXCLUDED.source_url,
         source_etag = EXCLUDED.source_etag,
         source_modified_at = EXCLUDED.source_modified_at,
@@ -235,16 +217,11 @@ export async function upsertRagDocument(
       input.sourceType,
       input.title,
       input.fileName,
-      input.docNumber,
-      input.docType,
-      input.process,
-      input.status,
-      input.docVersion,
-      input.effectiveFrom,
-      input.validTo,
-      input.reminderToUpdate,
-      input.managerApprovalStatus,
-      input.qaApprovalStatus,
+      input.category,
+      input.productName,
+      input.industryTypes,
+      input.applications,
+      input.equipment,
       input.sourceUrl,
       input.sourceEtag,
       input.sourceModifiedAt,
@@ -340,9 +317,11 @@ export async function disableRagDocument(documentId: number) {
 
   try {
     await client.query("BEGIN");
+
     await client.query("DELETE FROM rag.chunks WHERE document_id = $1", [
       documentId,
     ]);
+
     await client.query(
       `
         UPDATE rag.documents
@@ -356,6 +335,7 @@ export async function disableRagDocument(documentId: number) {
       `,
       [documentId],
     );
+
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -381,30 +361,24 @@ export async function deleteRagDocumentBySource(
   return result.rowCount ?? 0;
 }
 
-export async function getRagSearchCandidates(input?: {
-  docType?: string | null;
-  process?: string | null;
+export async function getRagSearchCandidates(input: {
+  sourceKey: string;
+  industryTypesAny?: string[];
 }): Promise<RagSearchCandidate[]> {
   const conditions = [
+    "d.source_key = $1",
     "d.is_searchable = true",
-    "LOWER(COALESCE(d.status, '')) = 'active'",
-    "(d.effective_from IS NULL OR d.effective_from <= now())",
-    "(d.valid_to IS NULL OR d.valid_to >= now())",
   ];
-  const params: unknown[] = [];
 
-  if (input?.docType?.trim()) {
-    params.push(input.docType.trim());
-    conditions.push(
-      `LOWER(COALESCE(d.doc_type, '')) = LOWER($${params.length})`,
-    );
-  }
+  const params: unknown[] = [input.sourceKey];
 
-  if (input?.process?.trim()) {
-    params.push(input.process.trim());
-    conditions.push(
-      `LOWER(COALESCE(d.process, '')) = LOWER($${params.length})`,
-    );
+  const industries = (input.industryTypesAny ?? [])
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (industries.length > 0) {
+    params.push(industries);
+    conditions.push(`d.industry_types && $${params.length}::text[]`);
   }
 
   const result = await postgresPool.query<{
@@ -414,10 +388,11 @@ export async function getRagSearchCandidates(input?: {
     content: string;
     embedding: unknown;
     title: string;
-    doc_number: string | null;
-    doc_type: string | null;
-    process: string | null;
-    doc_version: number | string | null;
+    category: string | null;
+    product_name: string | null;
+    industry_types: unknown;
+    applications: unknown;
+    equipment: unknown;
     source_url: string | null;
     source_modified_at: string | Date | null;
   }>(
@@ -429,10 +404,11 @@ export async function getRagSearchCandidates(input?: {
         c.content,
         c.embedding,
         d.title,
-        d.doc_number,
-        d.doc_type,
-        d.process,
-        d.doc_version,
+        d.category,
+        d.product_name,
+        d.industry_types,
+        d.applications,
+        d.equipment,
         d.source_url,
         d.source_modified_at
       FROM rag.chunks c
@@ -447,22 +423,15 @@ export async function getRagSearchCandidates(input?: {
     chunkId: Number(row.chunk_id),
     documentId: Number(row.document_id),
     chunkIndex: Number(row.chunk_index),
-
     content: row.content,
     embedding: toNumberArray(row.embedding),
-
     title: row.title,
-    docNumber: row.doc_number,
-    docType: row.doc_type,
-    process: row.process,
-
-    docVersion:
-      row.doc_version === null || row.doc_version === undefined
-        ? null
-        : Number(row.doc_version),
-
+    category: row.category,
+    productName: row.product_name,
+    industryTypes: toStringArray(row.industry_types),
+    applications: toStringArray(row.applications),
+    equipment: toStringArray(row.equipment),
     sourceUrl: row.source_url,
-
     sourceModifiedAt: toIsoString(row.source_modified_at),
   }));
 }
@@ -475,7 +444,7 @@ export async function getRagSyncState(
     site_id: string | null;
     list_id: string | null;
     delta_link: string | null;
-    last_sync_at: string | null;
+    last_sync_at: string | Date | null;
     last_sync_status: string | null;
     last_error: string | null;
   }>(
@@ -503,7 +472,7 @@ export async function getRagSyncState(
     siteId: row.site_id,
     listId: row.list_id,
     deltaLink: row.delta_link,
-    lastSyncAt: row.last_sync_at,
+    lastSyncAt: toIsoString(row.last_sync_at),
     lastSyncStatus: row.last_sync_status,
     lastError: row.last_error,
   };
@@ -557,6 +526,7 @@ export async function deleteRagDocumentsNotInSourceIds(
       `DELETE FROM rag.documents WHERE source_key = $1`,
       [sourceKey],
     );
+
     return result.rowCount ?? 0;
   }
 

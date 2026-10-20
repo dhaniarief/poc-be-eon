@@ -14,18 +14,22 @@ export type KnowledgeSearchResult = {
     chunkIndex: number;
     content: string;
     title: string;
-    docNumber: string | null;
-    docType: string | null;
-    process: string | null;
-    docVersion: number | null;
+    category: string | null;
+    productName: string | null;
+    industryTypes: string[];
+    applications: string[];
+    equipment: string[];
     sourceUrl: string | null;
     sourceModifiedAt: string | null;
   }>;
 };
 
-/**
- * Cosine similarity untuk embedding.
- */
+export type KnowledgeSearchInput = {
+  query: string;
+  topK?: number;
+  industryTypes?: string[];
+};
+
 export function cosineSimilarity(a: number[], b: number[]) {
   if (a.length === 0 || b.length === 0 || a.length !== b.length) {
     return -1;
@@ -44,16 +48,11 @@ export function cosineSimilarity(a: number[], b: number[]) {
     normB += bv * bv;
   }
 
-  if (normA === 0 || normB === 0) {
-    return -1;
-  }
+  if (normA === 0 || normB === 0) return -1;
 
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-/**
- * Normalisasi text untuk lexical search.
- */
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -63,12 +62,6 @@ function normalizeText(value: string) {
     .trim();
 }
 
-/**
- * Stop words sederhana.
- *
- * Jangan terlalu agresif karena beberapa kata Bahasa Indonesia
- * tetap penting dalam SOP.
- */
 const STOP_WORDS = new Set([
   "yang",
   "dan",
@@ -97,120 +90,68 @@ function tokenize(value: string) {
   return normalizeText(value)
     .split(" ")
     .map((token) => token.trim())
-    .filter((token) => token.length >= 3 && !STOP_WORDS.has(token));
+    .filter((token) => token.length >= 2 && !STOP_WORDS.has(token));
 }
 
-/**
- * Score lexical berdasarkan overlap keyword query vs document.
- *
- * Nilai:
- * 0   = tidak ada keyword yang match
- * 1   = seluruh keyword match
- */
 function lexicalSimilarity(query: string, text: string) {
   const queryTokens = [...new Set(tokenize(query))];
-
-  if (queryTokens.length === 0) {
-    return 0;
-  }
+  if (queryTokens.length === 0) return 0;
 
   const normalizedText = normalizeText(text);
 
   let matched = 0;
-
   for (const token of queryTokens) {
-    if (normalizedText.includes(token)) {
-      matched += 1;
-    }
+    if (normalizedText.includes(token)) matched += 1;
   }
 
   return matched / queryTokens.length;
 }
 
-/**
- * Boost jika query berhubungan kuat dengan title dokumen.
- *
- * Contoh:
- * query  : prosedur pengembangan aplikasi
- * title  : SOP PENGEMBANGAN APLIKASI
- */
-function calculateTitleBoost(query: string, title: string) {
+function calculateFieldBoost(
+  query: string,
+  value: string | null,
+  maxBoost: number,
+) {
+  if (!value) return 0;
+
   const queryTokens = [...new Set(tokenize(query))];
+  if (queryTokens.length === 0) return 0;
 
-  if (queryTokens.length === 0) {
-    return 0;
-  }
-
-  const normalizedTitle = normalizeText(title);
-
+  const normalizedValue = normalizeText(value);
   const matches = queryTokens.filter((token) =>
-    normalizedTitle.includes(token),
+    normalizedValue.includes(token),
   ).length;
 
   const ratio = matches / queryTokens.length;
 
-  if (ratio >= 0.75) {
-    return 0.1;
-  }
-
-  if (ratio >= 0.5) {
-    return 0.06;
-  }
-
-  if (ratio > 0) {
-    return 0.03;
-  }
-
+  if (ratio >= 0.75) return maxBoost;
+  if (ratio >= 0.5) return maxBoost * 0.6;
+  if (ratio > 0) return maxBoost * 0.3;
   return 0;
 }
 
-export async function searchKnowledge(input: {
-  query: string;
-  topK?: number;
-  docType?: string | null;
-  process?: string | null;
-}): Promise<KnowledgeSearchResult> {
+export async function searchKnowledge(
+  input: KnowledgeSearchInput,
+): Promise<KnowledgeSearchResult> {
   const query = input.query.trim();
 
   if (!query) {
-    throw new Error("Knowledge search query cannot be empty.");
+    throw new Error("Product Knowledge search query cannot be empty.");
   }
 
   const topK = Math.max(1, Math.min(input.topK ?? env.RAG_SEARCH_TOP_K, 20));
 
-  let candidates = await getRagSearchCandidates({
-    docType: input.docType,
-    process: input.process,
+  const candidates = await getRagSearchCandidates({
+    sourceKey: env.RAG_PRODUCT_SOURCE_KEY,
+    industryTypesAny: input.industryTypes,
   });
-
-  /**
-   * Metadata filters are optional hints.
-   *
-   * LLM may send natural-language values such as:
-   * process = "pengembangan aplikasi"
-   *
-   * while SharePoint metadata actually contains:
-   * process = "IT"
-   *
-   * If filtering removes all candidates, automatically retry
-   * without metadata filters instead of returning "not found".
-   */
-  if (candidates.length === 0 && (input.docType || input.process)) {
-    console.log("[RAG SEARCH FILTER FALLBACK]", {
-      query,
-      requestedDocType: input.docType ?? null,
-      requestedProcess: input.process ?? null,
-      reason: "FILTERED_CANDIDATES_EMPTY",
-    });
-
-    candidates = await getRagSearchCandidates({});
-  }
 
   if (candidates.length === 0) {
     console.log("[RAG SEARCH]", {
       query,
       found: false,
-      reason: "NO_CANDIDATES",
+      reason: "NO_PRODUCT_KNOWLEDGE_CANDIDATES",
+      industryTypes: input.industryTypes ?? [],
     });
 
     return {
@@ -222,18 +163,8 @@ export async function searchKnowledge(input: {
     };
   }
 
-  /**
-   * Embedding query.
-   */
   const queryEmbedding = await createEmbedding(query);
 
-  /**
-   * Hybrid ranking:
-   *
-   * 80% semantic
-   * 20% lexical
-   * + title boost
-   */
   const allRanked = candidates
     .map((candidate) => {
       const semanticScore = cosineSimilarity(
@@ -243,47 +174,57 @@ export async function searchKnowledge(input: {
 
       const lexicalText = [
         candidate.title,
-        candidate.docNumber ?? "",
-        candidate.docType ?? "",
-        candidate.process ?? "",
+        candidate.category ?? "",
+        candidate.productName ?? "",
+        candidate.industryTypes.join(" "),
+        candidate.applications.join(" "),
+        candidate.equipment.join(" "),
         candidate.content,
       ].join("\n");
 
       const lexicalScore = lexicalSimilarity(query, lexicalText);
 
-      const titleBoost = calculateTitleBoost(query, candidate.title);
+      const titleBoost = calculateFieldBoost(query, candidate.title, 0.08);
+      const productBoost = calculateFieldBoost(
+        query,
+        candidate.productName,
+        0.08,
+      );
 
-      const hybridScore = semanticScore * 0.8 + lexicalScore * 0.2 + titleBoost;
+      const hybridScore =
+        semanticScore * 0.75 +
+        lexicalScore * 0.25 +
+        titleBoost +
+        productBoost;
 
       return {
         candidate,
         semanticScore,
         lexicalScore,
         titleBoost,
+        productBoost,
         score: Math.min(1, hybridScore),
       };
     })
     .sort((a, b) => b.score - a.score);
 
-  /**
-   * Debug supaya kita tahu apa yang sebenarnya ditemukan.
-   */
   console.log(
     "[RAG SEARCH DEBUG]",
     JSON.stringify(
       {
         query,
-        docType: input.docType ?? null,
-        process: input.process ?? null,
+        sourceKey: env.RAG_PRODUCT_SOURCE_KEY,
+        industryTypes: input.industryTypes ?? [],
         minScore: env.RAG_MIN_SCORE,
         totalCandidates: candidates.length,
-
         topResults: allRanked.slice(0, 5).map((item) => ({
           title: item.candidate.title,
+          productName: item.candidate.productName,
           chunkIndex: item.candidate.chunkIndex,
           semanticScore: Number(item.semanticScore.toFixed(6)),
           lexicalScore: Number(item.lexicalScore.toFixed(6)),
           titleBoost: Number(item.titleBoost.toFixed(6)),
+          productBoost: Number(item.productBoost.toFixed(6)),
           finalScore: Number(item.score.toFixed(6)),
         })),
       },
@@ -292,43 +233,29 @@ export async function searchKnowledge(input: {
     ),
   );
 
-  /**
-   * Normal search berdasarkan minimum threshold.
-   */
   let selected = allRanked
     .filter((item) => item.score >= env.RAG_MIN_SCORE)
     .slice(0, topK);
 
-  /**
-   * Soft fallback.
-   *
-   * Kalau hybrid threshold tidak lolos tetapi ada candidate
-   * dengan semantic cukup masuk akal atau lexical matching kuat,
-   * tetap berikan beberapa hasil ke LLM.
-   *
-   * Ini berguna untuk variasi Bahasa Indonesia.
-   */
   if (selected.length === 0) {
     selected = allRanked
       .filter((item) => item.semanticScore >= 0.18 || item.lexicalScore >= 0.25)
       .slice(0, Math.min(topK, 3));
   }
 
-  const ranked = selected.map(
+  const results = selected.map(
     ({ candidate, score, semanticScore, lexicalScore }) => ({
       score: Number(score.toFixed(6)),
       semanticScore: Number(semanticScore.toFixed(6)),
       lexicalScore: Number(lexicalScore.toFixed(6)),
-
       chunkIndex: candidate.chunkIndex,
       content: candidate.content,
-
       title: candidate.title,
-      docNumber: candidate.docNumber,
-      docType: candidate.docType,
-      process: candidate.process,
-      docVersion: candidate.docVersion,
-
+      category: candidate.category,
+      productName: candidate.productName,
+      industryTypes: candidate.industryTypes,
+      applications: candidate.applications,
+      equipment: candidate.equipment,
       sourceUrl: candidate.sourceUrl,
       sourceModifiedAt: candidate.sourceModifiedAt,
     }),
@@ -336,18 +263,18 @@ export async function searchKnowledge(input: {
 
   console.log("[RAG SEARCH RESULT]", {
     query,
-    found: ranked.length > 0,
+    found: results.length > 0,
     totalCandidates: candidates.length,
-    totalResults: ranked.length,
-    bestScore: ranked.length > 0 ? ranked[0]?.score : null,
-    bestTitle: ranked.length > 0 ? ranked[0]?.title : null,
+    totalResults: results.length,
+    bestScore: results[0]?.score ?? null,
+    bestTitle: results[0]?.title ?? null,
   });
 
   return {
-    found: ranked.length > 0,
+    found: results.length > 0,
     query,
     totalCandidates: candidates.length,
-    totalResults: ranked.length,
-    results: ranked,
+    totalResults: results.length,
+    results,
   };
 }
