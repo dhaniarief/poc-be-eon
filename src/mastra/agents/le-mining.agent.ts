@@ -1,4 +1,5 @@
 import { Agent } from "@mastra/core/agent";
+import { openai } from "@ai-sdk/openai";
 import { createTeamsAdapter } from "@chat-adapter/teams";
 
 import type { ModelMode } from "../../config/models/model.types.js";
@@ -8,7 +9,11 @@ import { agentMemory } from "../memory.js";
 import { agentRequestContextSchema } from "../runtime/request-context.js";
 import { eonToolHooks } from "../runtime/tool-hooks.js";
 import { leMiningAgentInstructions } from "../prompts/le-mining.instructions.js";
-import { commonTools, leMiningTools } from "../tools/tool.registry.js";
+import {
+  commonTools,
+  leMiningCoreTools,
+  leMiningLocalPublicTools,
+} from "../tools/tool.registry.js";
 import { getTeamsToken } from "../../services/teams/teams-token.service.js";
 
 export function createLeMiningAgent(modelMode: ModelMode) {
@@ -16,32 +21,44 @@ export function createLeMiningAgent(modelMode: ModelMode) {
 
   return new Agent({
     id: isCloud ? "le-mining-cloud-agent" : "le-mining-local-agent",
+
     name: isCloud
       ? "LE Mining Intelligence Agent - Cloud"
       : "LE Mining Intelligence Agent - Local",
+
     requestContextSchema: agentRequestContextSchema,
+
     instructions: leMiningAgentInstructions,
+
     model: getModel(modelMode),
 
-    ...(isCloud
-      ? {
-          channels: {
-            adapters: {
-              teams: {
-                adapter: createTeamsAdapter({
-                  appType: "SingleTenant",
-                  appId: env.TEAMS_APP_ID,
-                  appTenantId: env.TEAMS_APP_TENANT_ID,
-                  userName: "Mr. EON LE Mining",
-                  token: getTeamsToken,
-                }),
-                toolDisplay: "hidden",
-                typingStatus: true,
-              },
-            },
-          },
-        }
-      : {}),
+    // =========================================
+    // TEAMS
+    // Available for BOTH Local and Cloud
+    // =========================================
+    channels: {
+      adapters: {
+        teams: {
+          adapter: createTeamsAdapter({
+            appType: "SingleTenant",
+
+            appId: env.TEAMS_APP_ID,
+
+            appTenantId: env.TEAMS_APP_TENANT_ID,
+
+            userName: isCloud
+              ? "Mr. EON LE Mining Cloud"
+              : "Mr. EON LE Mining Local",
+
+            token: getTeamsToken,
+          }),
+
+          toolDisplay: "hidden",
+
+          typingStatus: true,
+        },
+      },
+    },
 
     defaultOptions: {
       maxSteps:
@@ -51,10 +68,30 @@ export function createLeMiningAgent(modelMode: ModelMode) {
     },
 
     hooks: eonToolHooks,
-    ...(agentMemory ? { memory: agentMemory } : {}),
+
+    ...(agentMemory
+      ? {
+          memory: agentMemory,
+        }
+      : {}),
+
     tools: {
-      ...leMiningTools,
       ...commonTools,
+      ...leMiningCoreTools,
+
+      ...(modelMode === "local"
+        ? {
+            // LOCAL public intelligence
+            // -> SearXNG
+            ...leMiningLocalPublicTools,
+          }
+        : {
+            // CLOUD public intelligence
+            // -> OpenAI native web search
+            web_search: openai.tools.webSearch({
+              searchContextSize: "medium",
+            }),
+          }),
     },
   });
 }

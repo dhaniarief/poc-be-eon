@@ -29,19 +29,44 @@ export const knowledgeTools = {
   searchKnowledge: searchKnowledgeTool,
 };
 
-export const leMiningTools = {
+/**
+ * Tools available to BOTH LE Mining Local and Cloud agents.
+ *
+ * Important:
+ * - searchLeProductWeb stays restricted in code to EON/LE product domains.
+ * - unrestricted/public company intelligence is intentionally NOT included here.
+ */
+export const leMiningCoreTools = {
   searchLeMiningProducts: searchLeMiningProductsTool,
   searchLeMiningKnowledge: searchLeMiningKnowledgeTool,
   searchLeProductWeb: searchLePublicWebTool,
   searchLeMiningCustomers: searchLeMiningCustomersTool,
   searchLeMiningContacts: searchLeMiningContactsTool,
+};
+
+/**
+ * LOCAL only.
+ * Uses the custom SearXNG public-intelligence service.
+ */
+export const leMiningLocalPublicTools = {
   searchPublicIntelligence: searchLePublicIntelligenceTool,
+};
+
+/**
+ * Convenience/backward-compatible aggregate.
+ * Do not use this object directly inside createLeMiningAgent(), because Cloud
+ * must use OpenAI native web_search instead of the SearXNG public tool.
+ */
+export const leMiningTools = {
+  ...leMiningCoreTools,
+  ...leMiningLocalPublicTools,
 };
 
 export const allTools = {
   ...salesTools,
   ...commonTools,
   ...knowledgeTools,
-  ...leMiningTools,
+  ...leMiningCoreTools,
+  ...leMiningLocalPublicTools,
   searxngWebSearch: searxngWebSearchTool,
 };

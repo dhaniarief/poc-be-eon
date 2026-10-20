@@ -11,9 +11,19 @@ const toolAliasMap: Record<string, string> = {
   webSearch: "web.search",
   searxngWebSearch: "web.search",
   web_search: "openai.web_search",
+
   searchLeMiningProducts: "le-mining.products",
   searchLeMiningKnowledge: "le-mining.knowledge",
+
+  // Current LE Mining registry key.
+  searchLeProductWeb: "le-mining.web",
+
+  // Legacy alias kept for older traces/tests.
   searchLePublicWeb: "le-mining.web",
+
+  searchLeMiningCustomers: "le-mining.customers",
+  searchLeMiningContacts: "le-mining.contacts",
+  searchPublicIntelligence: "le-mining.public-intelligence",
 };
 
 export function normalizeToolName(rawToolName: string, agentId: string) {
