@@ -33,7 +33,7 @@ Do NOT use this tool for:
 - LE product documents
 - LE product research
 
-Product web research must use searchLeProductWeb, which is restricted to eonchemicals.com and lelubricants.com.
+Product web research must use searchLeProductWeb, which is restricted to eonchemicals.com, lelubricants.com and lubetechnologies.com.
 
 Public professional information is evidence only. Do not label a person as a confirmed decision maker unless internal CRM/opportunity evidence confirms it.
 `.trim(),

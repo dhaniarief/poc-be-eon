@@ -16,6 +16,7 @@ Search public LE PRODUCT information only.
 This tool is restricted in code to:
 - eonchemicals.com
 - lelubricants.com
+- lubetechnologies.com
 
 Use for:
 - current/public LE product information

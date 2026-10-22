@@ -1,12 +1,10 @@
 import { env } from "../../config/env.js";
-import {
-  searchSearxng,
-  type SearxngSearchResult,
-} from "./searxng.service.js";
+import { searchSearxng, type SearxngSearchResult } from "./searxng.service.js";
 
 export const LE_PUBLIC_ALLOWED_DOMAINS = [
   "eonchemicals.com",
   "lelubricants.com",
+  "lubetechnologies.com",
 ] as const;
 
 function isAllowedUrl(value: string) {
